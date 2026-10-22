@@ -89,8 +89,8 @@ function tab(n){
   [1,2,3,4,5].forEach(i=>{$("v"+i).classList.toggle("hide",i!==n);$("t"+i).classList.toggle("on",i===n)});
   if(n===2)loadProgress();if(n===3)renderManage();if(n===4)renderCardio();if(n===5)renderBody();
 }
-$("prev").onclick=()=>{cur=addDays(cur,-1);render()};
-$("next").onclick=()=>{cur=addDays(cur,1);render()};
+$("prev").onclick=()=>{cur=addDays(cur,-1);TM={};render()};
+$("next").onclick=()=>{cur=addDays(cur,1);TM={};render()};
 
 /* ---------- Workout ---------- */
 async function render(){
@@ -120,16 +120,18 @@ async function render(){
       const s=saved[e.id+"|"+k],pr=l&&l.sets[k];
       rows+=`<div class="row"><b>${k}</b>
         <input inputmode="decimal" data-e="${e.id}" data-k="${k}" data-f="w" placeholder="${pr?pr.weight:(e.default_weight||"kg")}" value="${s?s.weight:""}" aria-label="Weight, set ${k}">
-        <input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="r" placeholder="${pr?pr.reps:(parseInt(e.reps)||"reps")}" value="${s?s.reps:""}" aria-label="Reps, set ${k}"></div>`;
+        <input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="r" placeholder="${pr?pr.reps:(parseInt(e.reps)||"reps")}" value="${s?s.reps:""}" aria-label="Reps, set ${k}">${k===e.sets?`<input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Time, last set">`:"<span></span>"}</div>`;
     }
     const info=l?`Last time: ${Math.max(...Object.values(l.sets).map(x=>x.weight))} kg · ${md(l.day)}`:(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight");
     return `<div class="card"><div class="eh" data-id="${e.id}" role="button" tabindex="0">
       <div class="thumb">${pic(e)}</div>
       <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}</div></div><span class="chev">›</span></div>
       <div class="meta">${info}</div>
-      <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span></div>${rows}</div>`;
+      <div class="timer" data-t="${e.id}"><span class="tdisp">0:00</span><button class="tb go" data-a="go">Start</button><button class="tb" data-a="pause" disabled>Pause</button></div>
+      <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span><span>Time</span></div>${rows}</div>`;
   }).join("");
   $("saveWrap").classList.remove("hide");$("save").textContent="Save workout";
+  plan.forEach(e=>paintTimer(e.id));
   updateRings();
 }
 
@@ -148,10 +150,10 @@ $("save").onclick=async()=>{
   const rows=[];
   plan.forEach(e=>{
     for(let k=1;k<=e.sets;k++){
-      const q=f=>document.querySelector(`input[data-e="${e.id}"][data-k="${k}"][data-f="${f}"]`).value;
-      const w=q("w"),r=q("r");
-      if(w===""&&r==="")continue;
-      rows.push({user_id:user.id,day:cur,exercise_id:e.id,set_no:k,weight:parseFloat(String(w).replace(",","."))||0,reps:parseInt(r)||0});
+      const q=f=>{const el=document.querySelector(`input[data-e="${e.id}"][data-k="${k}"][data-f="${f}"]`);return el?el.value:""};
+      const w=q("w"),r=q("r"),tt=q("t");
+      if(w===""&&r===""&&tt==="")continue;
+      rows.push({user_id:user.id,day:cur,exercise_id:e.id,set_no:k,weight:parseFloat(String(w).replace(",","."))||0,reps:parseInt(r)||0,seconds:k===e.sets?parseTime(tt):null});
     }
   });
   if(!rows.length){$("save").textContent="Nothing to save";return}
@@ -159,6 +161,44 @@ $("save").onclick=async()=>{
   const {error}=await db.from("sets").upsert(rows,{onConflict:"user_id,day,exercise_id,set_no"});
   $("save").textContent=error?"Couldn’t save. Try again.":"Saved ✓";
 };
+
+/* ---------- Stopwatch (one per exercise) ----------
+   Start → button becomes Finish. Pause/Resume in between. Finish writes the time into the Time field of the last set. */
+let TM={};   // exercise id → {ms: accumulated, t0: last start, run, pause}
+function tmFmt(sec){sec=Math.round(sec);return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")}
+function parseTime(str){
+  str=String(str||"").trim();if(!str)return null;
+  const p=str.split(":").map(x=>parseFloat(x.replace(",",".")));
+  if(p.some(isNaN))return null;
+  const sec=p.length>=2?p[0]*60+p[1]:p[0];
+  return sec>0?Math.round(sec):null;
+}
+const tmMs=t=>t.ms+(t.run&&!t.pause?Date.now()-t.t0:0);
+function paintTimer(id){
+  const box=document.querySelector(`.timer[data-t="${id}"]`);if(!box)return;
+  const t=TM[id]||{ms:0,run:false,pause:false};
+  box.querySelector(".tdisp").textContent=tmFmt(tmMs(t)/1000);
+  const go=box.querySelector('[data-a="go"]'),pa=box.querySelector('[data-a="pause"]');
+  go.textContent=t.run?"Finish":"Start";go.classList.toggle("stop",t.run);
+  pa.disabled=!t.run;pa.textContent=t.pause?"Resume":"Pause";
+}
+setInterval(()=>{Object.keys(TM).forEach(id=>{if(TM[id].run&&!TM[id].pause)paintTimer(id)})},250);
+$("list").addEventListener("click",ev=>{
+  const b=ev.target.closest(".tb");if(!b)return;
+  const id=+b.closest(".timer").dataset.t,t=TM[id]||(TM[id]={ms:0,t0:0,run:false,pause:false});
+  if(b.dataset.a==="go"){
+    if(!t.run){t.run=true;t.pause=false;t.ms=0;t.t0=Date.now()}            // start
+    else{                                                                    // finish
+      const total=tmMs(t);t.ms=total;t.run=false;t.pause=false;
+      const inp=document.querySelector(`input[data-e="${id}"][data-f="t"]`);
+      if(inp&&total>=1000)inp.value=tmFmt(total/1000);
+    }
+  }else if(t.run){
+    if(t.pause){t.pause=false;t.t0=Date.now()}                               // resume
+    else{t.ms+=Date.now()-t.t0;t.pause=true}                                 // pause
+  }
+  paintTimer(id);
+});
 
 /* ---------- Rings ---------- */
 function setRing(id,p){const c=$(id),len=2*Math.PI*c.getAttribute("r");c.style.strokeDasharray=p>0?`${len*p} ${len}`:`0 ${len}`;c.style.opacity=p>0?1:0}

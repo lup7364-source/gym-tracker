@@ -24,11 +24,11 @@ input::placeholder{color:#636366}
 .days button{padding:8px 14px;white-space:nowrap;border-radius:20px;font-size:15px;color:var(--mute)}
 .days .on{background:var(--acc);color:#000;font-weight:700}
 .meta{margin:2px 0 12px;font-size:14px;color:var(--mute)}
-.lbl,.row{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;align-items:center}
+.lbl,.row{display:grid;grid-template-columns:28px 1fr 1fr 76px;gap:8px;align-items:center}
 .lbl{font-size:13px;color:var(--mute);text-align:center;margin-bottom:6px}
 .row{margin-bottom:8px}
 .row b{font-size:17px;color:var(--acc);text-align:center}
-.row input{text-align:center;font-size:18px}
+.row input{text-align:center;font-size:17px;padding:12px 6px}
 .rest{padding:48px 0;text-align:center}.rest h2{margin-top:0}
 .login{margin-top:12vh}.login input{margin-bottom:10px}
 .err{color:var(--red);min-height:22px;font-size:14px}
@@ -82,3 +82,9 @@ input[type=date]{color-scheme:dark;min-height:46px}
 .guide ol{margin:0;padding-left:20px}.guide li{margin-bottom:10px}.guide li:last-child{margin:0}
 .del{padding:4px 10px;background:none;color:var(--mute);font-size:18px}
 .crow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}.crow:last-child{border:0}
+.timer{display:flex;align-items:center;gap:8px;margin:0 0 14px}
+.tdisp{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;min-width:84px;letter-spacing:-.5px}
+.tb{padding:10px 16px;border-radius:20px;font-weight:600;background:var(--card2)}
+.tb.go{background:var(--acc);color:#000}
+.tb.stop{background:var(--red);color:#fff}
+.tb:disabled{opacity:.35;cursor:default}
