@@ -87,7 +87,7 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
 <main id="login" class="login hide">
   <h1>Gym</h1>
   <p class="mute">Sign in with your username and password.</p>
-  <input id="u" placeholder="Username" autocomplete="username" autocapitalize="none">
+  <input id="u" placeholder="Username or email" autocomplete="username" autocapitalize="none">
   <input id="p" type="password" placeholder="Password" autocomplete="current-password">
   <div class="err" id="lerr"></div>
   <button class="p" id="lbtn" style="width:100%">Sign in</button>
@@ -212,7 +212,7 @@ $("lbtn").onclick=async()=>{
   $("lerr").textContent="";
   const name=$("u").value.trim().toLowerCase().replace(/\s+/g,"");
   if(!name||!$("p").value){$("lerr").textContent="Enter your username and password.";return}
-  const {data,error}=await db.auth.signInWithPassword({email:name+"@"+DOMAIN,password:$("p").value});
+  const {data,error}=await db.auth.signInWithPassword({email:name.includes("@")?name:name+"@"+DOMAIN,password:$("p").value});
   if(error){$("lerr").textContent="Incorrect username or password.";return}
   enter(data.user);
 };
