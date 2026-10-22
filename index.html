@@ -78,6 +78,18 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
 .sheet .big img{width:100%;height:100%;object-fit:cover}
 .sheet .x{position:sticky;top:12px;float:right;width:36px;height:36px;border-radius:50%;padding:0;background:rgba(44,44,46,.9);font-size:20px;z-index:2;margin-top:12px}
 
+.bar button{font-size:11px;padding:8px 2px}.bar svg{width:24px;height:24px}
+.seg{display:flex;background:var(--card);border-radius:12px;padding:3px}
+.seg button{flex:1;background:none;border-radius:10px;color:var(--mute);padding:9px}
+.seg .on{background:var(--card2);color:var(--ink);font-weight:600}
+input[type=range]{padding:0;height:32px;accent-color:var(--acc);background:none}
+input[type=date]{color-scheme:dark;min-height:46px}
+.banner{display:block;width:100%;text-align:left;background:color-mix(in srgb,var(--acc) 16%,#000);color:var(--acc);font-weight:600;margin-top:12px;padding:14px 16px;border-radius:14px}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stats3 b{display:block;font-size:22px;font-weight:600}.stats3 span{font-size:13px;color:var(--mute)}
+.guide ol{margin:0;padding-left:20px}.guide li{margin-bottom:10px}.guide li:last-child{margin:0}
+.del{padding:4px 10px;background:none;color:var(--mute);font-size:18px}
+.crow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}.crow:last-child{border:0}
 </style>
 </head>
 
@@ -102,6 +114,7 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
 
   <section id="v1">
     <div class="nav"><button id="prev" aria-label="Previous day">‹</button><span class="mute" id="navl"></span><button id="next" aria-label="Next day">›</button></div>
+    <button class="banner hide" id="bwbanner">Weekly weigh-in is due. Tap to log it ›</button>
     <h2>Activity</h2>
     <div class="card act">
       <div>
@@ -134,8 +147,50 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
     <div id="mlist"></div>
   </section>
 
+  <section id="v4" class="hide">
+    <h2>Cardio</h2>
+    <div class="seg" id="ckind"><button data-k="run" class="on">Run</button><button data-k="bike">Static bike</button></div>
+    <div class="card" style="margin-top:12px">
+      <label class="fld"><span>Date</span><input type="date" id="cday"></label>
+      <div class="two">
+        <label class="fld"><span>Time (min)</span><input id="cmin" inputmode="decimal" placeholder="30"></label>
+        <label class="fld"><span>Distance (km)</span><input id="ckm" inputmode="decimal" placeholder="5"></label>
+      </div>
+      <label class="fld"><span>Intensity: <b id="cintl" style="color:var(--ink)">5 · Moderate</b></span><input type="range" id="cint" min="1" max="10" value="5"></label>
+      <div class="err" id="cerr"></div>
+      <button class="p" id="csave" style="width:100%;padding:14px">Save session</button>
+    </div>
+    <h2>This week</h2>
+    <div class="card stats3" id="cweek"></div>
+    <h2>History</h2>
+    <div class="card" id="chist"></div>
+  </section>
+
+  <section id="v5" class="hide">
+    <h2>Body weight</h2>
+    <div class="card">
+      <div class="meta" id="bwstatus" style="margin:0 0 10px"></div>
+      <div class="two"><input id="bwin" inputmode="decimal" placeholder="kg"><button class="p" id="bwsave">Save</button></div>
+      <div class="err" id="bwerr" style="margin-top:8px"></div>
+    </div>
+    <h2>How to weigh yourself</h2>
+    <div class="card guide"><ol>
+      <li>Weigh in once a week, on the same day, first thing in the morning.</li>
+      <li>Go to the bathroom first, then step on the scale right after.</li>
+      <li>Empty stomach: no food, and don’t drink any water until you’ve weighed.</li>
+      <li>Same scale, on a flat hard floor, with no clothes (or always the same).</li>
+      <li>Weigh before any workout.</li>
+    </ol></div>
+    <h2>Trend</h2>
+    <div class="card chart" id="bwchart"></div>
+    <h2>History</h2>
+    <div class="card" id="bwhist"></div>
+  </section>
+
   <nav class="bar">
     <button id="t1" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg>Workout</button>
+    <button id="t4"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>Cardio</button>
+    <button id="t5"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 10a4 4 0 018 0"/><path d="M12 10l2-2"/></svg>Weight</button>
     <button id="t2"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg>Progress</button>
     <button id="t3"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Exercises</button>
   </nav>
@@ -145,7 +200,7 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
 
 <script>
 /* ============ CONFIG ============ */
-const SUPABASE_URL = "https://erhglpprztggbjqsyaps.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://erhglpprztggbjqsyaps.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVyaGdscHByenRnZ2JqcXN5YXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI1ODY1ODAsImV4cCI6MjEwODE2MjU4MH0.EmOVvcGMslfzVcyrfwztkzXe8PNE_R7dqdt-uoqxhVc";   // the "anon" key, public by design
 const DOMAIN = "gym.app";                      // username "john" → john@gym.app
 const CYCLE = 6;                               // every exercise is done once every 6 days
@@ -233,14 +288,14 @@ async function loadEx(){
 async function enter(u){
   user=u;show("app");$("out").textContent=u.email[0];
   if(!(await loadEx())){$("list").innerHTML='<p class="mute">Couldn’t load exercises. Did you run setup.sql?</p>';return}
-  cur=iso(new Date());render();
+  cur=iso(new Date());render();checkBW();
 }
 
 /* ---------- Tabs ---------- */
-[1,2,3].forEach(n=>$("t"+n).onclick=()=>tab(n));
+[1,2,3,4,5].forEach(n=>$("t"+n).onclick=()=>tab(n));
 function tab(n){
-  [1,2,3].forEach(i=>{$("v"+i).classList.toggle("hide",i!==n);$("t"+i).classList.toggle("on",i===n)});
-  if(n===2)loadProgress();if(n===3)renderManage();
+  [1,2,3,4,5].forEach(i=>{$("v"+i).classList.toggle("hide",i!==n);$("t"+i).classList.toggle("on",i===n)});
+  if(n===2)loadProgress();if(n===3)renderManage();if(n===4)renderCardio();if(n===5)renderBody();
 }
 $("prev").onclick=()=>{cur=addDays(cur,-1);render()};
 $("next").onclick=()=>{cur=addDays(cur,1);render()};
@@ -464,6 +519,91 @@ async function loadProgress(){
     <text x="4" y="${y(min)+4}" font-size="11" fill="#8e8e93">${min}</text></svg>`;
   $("hist").innerHTML=pts.slice().reverse().map(p=>`<div class="hist"><span>${md(p.d)}/${p.d.slice(0,4)}</span><span><b>${p.w} kg</b> × ${p.reps} · vol. ${Math.round(p.vol)}</span></div>`).join("");
 }
+
+/* ---------- Helpers ---------- */
+const weekStart=day=>addDays(day,-((new Date(day+"T12:00:00").getDay()+6)%7));  // Monday
+const num=n=>String(Math.round(Number(n)*100)/100);
+const fmtTime=m=>{m=Math.round(m);return m>=60?Math.floor(m/60)+"h "+String(m%60).padStart(2,"0")+"m":m+" min"};
+function lineSvg(vals,label,dec){
+  const W=320,H=140,pad=24,max=Math.max(...vals),min=Math.min(...vals);
+  const x=i=>pad+(vals.length===1?(W-2*pad)/2:i*(W-2*pad)/(vals.length-1));
+  const y=v=>H-pad-(max===min?(H-2*pad)/2:(v-min)/(max-min)*(H-2*pad));
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
+    <polyline fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round" points="${vals.map((v,i)=>x(i)+","+y(v)).join(" ")}"/>
+    ${vals.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="var(--acc)"/>`).join("")}
+    <text x="4" y="${y(max)+4}" font-size="11" fill="#8e8e93">${max.toFixed(dec)}</text>
+    <text x="4" y="${y(min)+4}" font-size="11" fill="#8e8e93">${min.toFixed(dec)}</text></svg>`;
+}
+
+/* ---------- Weekly body weight ---------- */
+$("bwbanner").onclick=()=>tab(5);
+async function checkBW(){
+  const {data,error}=await db.from("body_weights").select("id").eq("week_start",weekStart(iso(new Date()))).limit(1);
+  $("bwbanner").classList.toggle("hide",!!error||(data&&data.length>0));
+}
+async function renderBody(){
+  const {data,error}=await db.from("body_weights").select("*").order("week_start",{ascending:false}).limit(60);
+  if(error){$("bwstatus").textContent="Couldn’t load. Did you run update_weight_cardio.sql?";return}
+  const wk=weekStart(iso(new Date())),now=data.find(w=>w.week_start===wk);
+  $("bwstatus").textContent=now?`This week: ${num(now.weight)} kg (logged ${md(now.day)}). You can update it.`:"Not logged this week yet.";
+  if(now&&!$("bwin").value)$("bwin").value=num(now.weight);
+  $("bwchart").innerHTML=data.length?lineSvg(data.slice().reverse().slice(-26).map(w=>Number(w.weight)),"Body weight by week",1):'<p class="mute" style="margin:0">Your first weigh-in starts the chart.</p>';
+  $("bwhist").innerHTML=data.length?data.map((w,i)=>{
+    const p=data[i+1],d=p?Number(w.weight)-Number(p.weight):null;
+    return `<div class="hist"><span>Week of ${md(w.week_start)}</span><span><b>${num(w.weight)} kg</b>${d===null?"":` <span class="mute">${d>0?"+":""}${num(d)}</span>`}</span></div>`;
+  }).join(""):'<p class="mute" style="margin:0">No weigh-ins yet.</p>';
+}
+$("bwsave").onclick=async()=>{
+  const w=parseFloat(String($("bwin").value).replace(",","."));
+  if(!(w>0)){$("bwerr").textContent="Enter your weight in kg.";return}
+  $("bwerr").textContent="";$("bwsave").textContent="Saving…";
+  const today=iso(new Date());
+  const {error}=await db.from("body_weights").upsert({user_id:user.id,week_start:weekStart(today),day:today,weight:w},{onConflict:"user_id,week_start"});
+  $("bwsave").textContent="Save";
+  if(error){$("bwerr").textContent="Couldn’t save. Try again.";return}
+  $("bwin").value="";await renderBody();checkBW();
+};
+
+/* ---------- Cardio ---------- */
+let CK="run";
+const KN={run:"Run",bike:"Static bike"};
+const INT=["","Very easy","Very easy","Easy","Easy","Moderate","Moderate","Hard","Hard","All out","All out"];
+$("ckind").addEventListener("click",ev=>{const b=ev.target.closest("button");if(!b)return;CK=b.dataset.k;[...$("ckind").children].forEach(x=>x.classList.toggle("on",x===b))});
+$("cint").oninput=()=>{$("cintl").textContent=$("cint").value+" · "+INT[+$("cint").value]};
+async function renderCardio(){
+  if(!$("cday").value)$("cday").value=iso(new Date());
+  const {data,error}=await db.from("cardio").select("*").order("day",{ascending:false}).order("id",{ascending:false}).limit(60);
+  if(error){$("chist").innerHTML='<p class="mute" style="margin:0">Couldn’t load. Did you run update_weight_cardio.sql?</p>';return}
+  const wk=weekStart(iso(new Date())),tw=data.filter(c=>c.day>=wk);
+  const sum=(k,f)=>tw.filter(c=>!k||c.kind===k).reduce((a,c)=>a+Number(c[f]),0);
+  $("cweek").innerHTML=`<div><b style="color:var(--red)">${num(sum("run","km"))} km</b><span>Run</span></div>
+    <div><b style="color:var(--acc)">${num(sum("bike","km"))} km</b><span>Bike</span></div>
+    <div><b style="color:var(--cyan)">${fmtTime(sum(null,"minutes"))}</b><span>Time</span></div>`;
+  $("chist").innerHTML=data.length?data.map(c=>{
+    const km=Number(c.km),min=Number(c.minutes);let extra="";
+    if(km>0){
+      if(c.kind==="run"){const p=min/km,m=Math.floor(p),sc=Math.round((p-m)*60);extra=` · ${sc===60?m+1:m}:${String(sc===60?0:sc).padStart(2,"0")} /km`}
+      else extra=` · ${(km/(min/60)).toFixed(1)} km/h`;
+    }
+    return `<div class="crow"><div><div style="font-weight:600">${KN[c.kind]} · ${num(km)} km · ${fmtTime(min)}</div>
+      <div class="meta" style="margin:2px 0 0">${md(c.day)}/${c.day.slice(0,4)} · Intensity ${c.intensity}/10${extra}</div></div>
+      <button class="del" data-id="${c.id}" aria-label="Delete session">✕</button></div>`;
+  }).join(""):'<p class="mute" style="margin:0">No sessions yet.</p>';
+}
+$("chist").addEventListener("click",async ev=>{
+  const b=ev.target.closest(".del");if(!b||!confirm("Delete this session?"))return;
+  await db.from("cardio").delete().eq("id",b.dataset.id);renderCardio();
+});
+$("csave").onclick=async()=>{
+  const min=parseFloat(String($("cmin").value).replace(",",".")),km=parseFloat(String($("ckm").value).replace(",","."))||0;
+  if(!(min>0)){$("cerr").textContent="Enter the time in minutes.";return}
+  if(!$("cday").value){$("cerr").textContent="Pick a date.";return}
+  $("cerr").textContent="";$("csave").textContent="Saving…";
+  const {error}=await db.from("cardio").insert({user_id:user.id,day:$("cday").value,kind:CK,minutes:min,km,intensity:+$("cint").value});
+  $("csave").textContent="Save session";
+  if(error){$("cerr").textContent="Couldn’t save. Try again.";return}
+  $("cmin").value="";$("ckm").value="";renderCardio();
+};
 
 init();
 </script>
