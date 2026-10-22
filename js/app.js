@@ -34,19 +34,70 @@ const pic=e=>e.image_path?`<img src="${esc(imgUrl(e))}" alt="${esc(e.name)}" loa
 document.addEventListener("error",ev=>{const t=ev.target;if(t.tagName==="IMG"&&t.dataset.g){const d=document.createElement("div");d.innerHTML=ph(t.dataset.g);t.replaceWith(d.firstChild)}},true);
 
 /* ---------- Daily plan ----------
-   Every 6-day cycle, the active exercises of each muscle group are shuffled (seeded by the cycle number, so the
-   result is the same all day / on every device) and dealt across the 6 days. Each exercise appears exactly once
-   per cycle and every day mixes muscle groups. */
+   • Every CYCLE (6) days, each active exercise is done exactly once and every day mixes muscle groups.
+   • Each new cycle is re-shuffled so that exercises that shared a day in the previous cycle are kept apart
+     (routines don't repeat). It is seeded, so the plan is the same all day and on every device.
+   • If you only do part of a day, the exercises you didn't log move to the lightest day still ahead (this cycle or the next).
+     A day with nothing logged counts as a rest day and doesn't move anything. */
 function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-function planFor(day){
-  const n=dayNum(day),cycle=Math.floor(n/CYCLE),slot=n-cycle*CYCLE,r=rng(cycle+7919);
-  let pos=Math.floor(r()*CYCLE);const out=[];
-  GROUPS.forEach(g=>{
-    const l=EX.filter(e=>e.active&&e.muscle_group===g);
-    for(let i=l.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[l[i],l[j]]=[l[j],l[i]]}
-    l.forEach(e=>{if(pos%CYCLE===slot)out.push(e);pos++});
+function shuffle(l,r){for(let i=l.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[l[i],l[j]]=[l[j],l[i]]}return l}
+const dayStr=n=>new Date(n*864e5).toISOString().slice(0,10);
+const todayStr=()=>iso(new Date());
+
+function dealCycle(cyc,prev){
+  const r=rng(cyc+7919),act=EX.filter(e=>e.active),cap=Math.ceil(act.length/CYCLE);
+  const pd={};if(prev)prev.forEach((l,i)=>l.forEach(e=>pd[e.id]=i));
+  const days=Array.from({length:CYCLE},()=>[]);
+  shuffle(act.slice(),r).forEach(e=>{
+    let best=-1,bs=1e9;
+    for(let s=0;s<CYCLE;s++){
+      if(days[s].length>=cap)continue;
+      const gc=days[s].filter(x=>x.muscle_group===e.muscle_group).length;                       // keep muscle groups spread
+      const ov=prev?days[s].filter(x=>pd[x.id]!==undefined&&pd[x.id]===pd[e.id]).length:0;         // keep old day-mates apart
+      const sc=gc*100+ov*10+days[s].length*3+r()*2;
+      if(sc<bs){bs=sc;best=s}
+    }
+    days[best].push(e);
   });
-  return out;
+  return days;
+}
+const ANCHOR=Math.floor(dayNum("2025-01-01")/CYCLE);
+let CM={sig:"",m:{}};
+function cycleDays(cyc){
+  const sig=EX.filter(e=>e.active).map(e=>e.id+e.muscle_group).join();
+  if(CM.sig!==sig)CM={sig,m:{}};
+  if(cyc<ANCHOR)return dealCycle(cyc,null);
+  for(let k=ANCHOR;k<=cyc;k++)if(!CM.m[k])CM.m[k]=dealCycle(k,CM.m[k-1]||null);
+  return CM.m[cyc];
+}
+
+async function planFor(day){
+  const n=dayNum(day),cyc=Math.floor(n/CYCLE),ws=(cyc-1)*CYCLE,we=(cyc+2)*CYCLE-1,T=dayNum(todayStr());
+  let rows=[];
+  for(let from=0;;from+=1000){
+    const {data,error}=await db.from("sets").select("day,exercise_id").gte("day",dayStr(ws)).lte("day",dayStr(we)).range(from,from+999);
+    if(error||!data)break;
+    rows=rows.concat(data);if(data.length<1000)break;
+  }
+  const logged=new Set(),used=new Set();
+  rows.forEach(s=>{const d=dayNum(s.day);logged.add(d+"|"+s.exercise_id);used.add(d)});
+  const L={};
+  for(let d=ws;d<=we;d++){const c=Math.floor(d/CYCLE);L[d]=cycleDays(c)[d-c*CYCLE].slice()}
+  for(let d=ws;d<n;d++){
+    if(!used.has(d))continue;                                    // nothing logged = rest day, nothing moves
+    const cEnd=(Math.floor(d/CYCLE)+1)*CYCLE-1,last=Math.min(cEnd+CYCLE,we);
+    L[d].filter(e=>!logged.has(d+"|"+e.id)).forEach(e=>{
+      const cur=EX.find(x=>x.id===e.id);if(!cur||!cur.active)return;
+      let t=-1;
+      for(let x=d+1;x<=last;x++){
+        if(!(x>=T||used.has(x))||L[x].some(y=>y.id===e.id))continue;   // only days still ahead (or days you did train)
+        if(t<0||L[x].length<L[t].length)t=x;                           // the lightest one
+      }
+      if(t<0)t=cEnd+1;
+      if(t<=we&&!L[t].some(y=>y.id===e.id))L[t].push({...cur,carried:true});
+    });
+  }
+  return L[n];
 }
 
 /* ---------- Session ---------- */
@@ -97,7 +148,8 @@ async function render(){
   const day=cur,today=iso(new Date()),d=new Date(day+"T12:00:00");
   $("title").textContent=day===today?"Today":d.toLocaleDateString("en-US",{weekday:"long"});
   $("sub").textContent=d.toLocaleDateString("en-US",{month:"long",day:"numeric"});
-  plan=planFor(day);
+  plan=await planFor(day);
+  if(day!==cur)return;
   $("navl").textContent=plan.length+" exercises · day "+((dayNum(day)%CYCLE)+1)+" of "+CYCLE;
   $("list").innerHTML="";$("saveWrap").classList.add("hide");
   if(!plan.length){$("list").innerHTML='<div class="rest"><h2>Nothing planned</h2><p class="mute">Add or activate exercises in the Exercises tab.</p></div>';updateRings();return}
@@ -119,16 +171,18 @@ async function render(){
     for(let k=1;k<=e.sets;k++){
       const s=saved[e.id+"|"+k],pr=l&&l.sets[k];
       rows+=`<div class="row"><b>${k}</b>
-        <input inputmode="decimal" data-e="${e.id}" data-k="${k}" data-f="w" placeholder="${pr?pr.weight:(e.default_weight||"kg")}" value="${s?s.weight:""}" aria-label="Weight, set ${k}">
-        <input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="r" placeholder="${pr?pr.reps:(parseInt(e.reps)||"reps")}" value="${s?s.reps:""}" aria-label="Reps, set ${k}">${k===e.sets?`<input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Time, last set">`:"<span></span>"}</div>`;
+        <input inputmode="decimal" data-e="${e.id}" data-k="${k}" data-f="w" placeholder="${pr&&pr.weight?pr.weight:(e.default_weight||"kg")}" value="${s?s.weight:""}" aria-label="Weight, set ${k}">
+        <input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="r" placeholder="${pr?pr.reps:(parseInt(e.reps)||"reps")}" value="${s?s.reps:""}" aria-label="Reps, set ${k}"></div>`;
+      if(k===e.sets)rows+=`<div class="row trow"><span></span><span></span><input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Stopwatch time"></div>`;
     }
-    const info=l?`Last time: ${Math.max(...Object.values(l.sets).map(x=>x.weight))} kg · ${md(l.day)}`:(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight");
+    const lw=l?Math.max(...Object.values(l.sets).map(x=>x.weight)):0,lr=l?Math.max(...Object.values(l.sets).map(x=>x.reps)):0;
+    const info=l?(lw?`Last time: ${lw} kg · ${md(l.day)}`:`Last time: ${lr} reps · ${md(l.day)}`):(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight");
     return `<div class="card"><div class="eh" data-id="${e.id}" role="button" tabindex="0">
       <div class="thumb">${pic(e)}</div>
-      <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}</div></div><span class="chev">›</span></div>
+      <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}${e.carried?" · carried over":""}</div></div><span class="chev">›</span></div>
       <div class="meta">${info}</div>
-      <div class="timer" data-t="${e.id}"><span class="tdisp">0:00</span><button class="tb go" data-a="go">Start</button><button class="tb" data-a="pause" disabled>Pause</button></div>
-      <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span><span>Time</span></div>${rows}</div>`;
+      <div class="timer" data-t="${e.id}"><button class="tb go" data-a="go">Start</button><button class="tb" data-a="pause" disabled>Pause</button></div>
+      <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span></div>${rows}</div>`;
   }).join("");
   $("saveWrap").classList.remove("hide");$("save").textContent="Save workout";
   plan.forEach(e=>paintTimer(e.id));
@@ -159,7 +213,8 @@ $("save").onclick=async()=>{
   if(!rows.length){$("save").textContent="Nothing to save";return}
   $("save").textContent="Saving…";
   const {error}=await db.from("sets").upsert(rows,{onConflict:"user_id,day,exercise_id,set_no"});
-  $("save").textContent=error?"Couldn’t save. Try again.":"Saved ✓";
+  const doneIds=new Set(rows.map(r=>r.exercise_id)),left=plan.filter(e=>!doneIds.has(e.id)).length;
+  $("save").textContent=error?"Couldn’t save. Try again.":left?`Saved ✓ · ${left} unfinished will move to another day`:"Saved ✓";
 };
 
 /* ---------- Stopwatch (one per exercise) ----------
@@ -177,7 +232,8 @@ const tmMs=t=>t.ms+(t.run&&!t.pause?Date.now()-t.t0:0);
 function paintTimer(id){
   const box=document.querySelector(`.timer[data-t="${id}"]`);if(!box)return;
   const t=TM[id]||{ms:0,run:false,pause:false};
-  box.querySelector(".tdisp").textContent=tmFmt(tmMs(t)/1000);
+  const inp=document.querySelector(`input[data-e="${id}"][data-f="t"]`);
+  if(TM[id]&&inp&&(t.run||t.ms>0))inp.value=tmFmt(tmMs(t)/1000);   // live time, right under the reps
   const go=box.querySelector('[data-a="go"]'),pa=box.querySelector('[data-a="pause"]');
   go.textContent=t.run?"Finish":"Start";go.classList.toggle("stop",t.run);
   pa.disabled=!t.run;pa.textContent=t.pause?"Resume":"Pause";
@@ -190,8 +246,6 @@ $("list").addEventListener("click",ev=>{
     if(!t.run){t.run=true;t.pause=false;t.ms=0;t.t0=Date.now()}            // start
     else{                                                                    // finish
       const total=tmMs(t);t.ms=total;t.run=false;t.pause=false;
-      const inp=document.querySelector(`input[data-e="${id}"][data-f="t"]`);
-      if(inp&&total>=1000)inp.value=tmFmt(total/1000);
     }
   }else if(t.run){
     if(t.pause){t.pause=false;t.t0=Date.now()}                               // resume
@@ -239,12 +293,12 @@ async function openModal(id){
   $("modal").classList.remove("hide");
   $("mx").onclick=closeModal;$("medit").onclick=()=>openEdit(id);
   const {data}=await db.from("sets").select("day,weight,reps").eq("exercise_id",id).order("day",{ascending:false}).limit(80);
-  const by={};(data||[]).forEach(s=>{const b=by[s.day]||(by[s.day]={w:0,reps:0});if(s.weight>b.w){b.w=s.weight;b.reps=s.reps}});
+  const by={};(data||[]).forEach(s=>{const b=by[s.day]||(by[s.day]={w:0,reps:0});if(s.weight>b.w||(s.weight===b.w&&s.reps>b.reps)){b.w=s.weight;b.reps=s.reps}});
   const days=Object.entries(by);
   if(!days.length){$("mh").textContent="No logs yet. Your first one sets the baseline.";return}
   const pb=Math.max(...days.map(([,v])=>v.w));
-  $("mh").innerHTML=`<div style="color:var(--ink);margin-bottom:8px">Personal best: <b style="color:var(--acc)">${pb} kg</b></div>`+
-    days.slice(0,6).map(([d,v])=>`<div class="hist"><span>${md(d)}/${d.slice(0,4)}</span><span style="color:var(--ink)"><b>${v.w} kg</b> × ${v.reps}</span></div>`).join("");
+  $("mh").innerHTML=`<div style="color:var(--ink);margin-bottom:8px">Personal best: <b style="color:var(--acc)">${pb?pb+" kg":Math.max(...days.map(([,v])=>v.reps))+" reps"}</b></div>`+
+    days.slice(0,6).map(([d,v])=>`<div class="hist"><span>${md(d)}/${d.slice(0,4)}</span><span style="color:var(--ink)">${v.w?`<b>${v.w} kg</b> × ${v.reps}`:`<b>${v.reps} reps</b>`}</span></div>`).join("");
 }
 
 /* ---------- Manage exercises ---------- */
@@ -339,17 +393,11 @@ async function loadProgress(){
   const {data,error}=await db.from("sets").select("day,weight,reps").eq("exercise_id",id).order("day");
   if(error||!data.length){$("chart").innerHTML='<p class="mute" style="margin:0">No logs for this exercise yet.</p>';$("hist").innerHTML='<p class="mute" style="margin:0">—</p>';return}
   const by={};
-  data.forEach(s=>{const b=by[s.day]||(by[s.day]={w:0,reps:0,vol:0});if(s.weight>b.w){b.w=s.weight;b.reps=s.reps}b.vol+=s.weight*s.reps});
+  data.forEach(s=>{const b=by[s.day]||(by[s.day]={w:0,reps:0,vol:0});if(s.weight>b.w||(s.weight===b.w&&s.reps>b.reps)){b.w=s.weight;b.reps=s.reps}b.vol+=s.weight*s.reps});
   const pts=Object.entries(by).map(([d,v])=>({d,...v}));
-  const W=320,H=140,pad=24,max=Math.max(...pts.map(p=>p.w)),min=Math.min(...pts.map(p=>p.w));
-  const x=i=>pad+(pts.length===1?(W-2*pad)/2:i*(W-2*pad)/(pts.length-1));
-  const y=v=>H-pad-(max===min?(H-2*pad)/2:(v-min)/(max-min)*(H-2*pad));
-  $("chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Top weight per day">
-    <polyline fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round" points="${pts.map((p,i)=>x(i)+","+y(p.w)).join(" ")}"/>
-    ${pts.map((p,i)=>`<circle cx="${x(i)}" cy="${y(p.w)}" r="4" fill="var(--acc)"/>`).join("")}
-    <text x="4" y="${y(max)+4}" font-size="11" fill="#8e8e93">${max}</text>
-    <text x="4" y="${y(min)+4}" font-size="11" fill="#8e8e93">${min}</text></svg>`;
-  $("hist").innerHTML=pts.slice().reverse().map(p=>`<div class="hist"><span>${md(p.d)}/${p.d.slice(0,4)}</span><span><b>${p.w} kg</b> × ${p.reps} · vol. ${Math.round(p.vol)}</span></div>`).join("");
+  const bw=pts.every(p=>p.w===0);   // bodyweight exercise: chart the reps instead
+  $("chart").innerHTML=lineSvg(pts.map(p=>bw?p.reps:p.w),bw?"Top reps per day":"Top weight per day",bw?0:1);
+  $("hist").innerHTML=pts.slice().reverse().map(p=>`<div class="hist"><span>${md(p.d)}/${p.d.slice(0,4)}</span><span>${p.w?`<b>${p.w} kg</b> × ${p.reps} · vol. ${Math.round(p.vol)}`:`<b>${p.reps} reps</b>`}</span></div>`).join("");
 }
 
 /* ---------- Helpers ---------- */

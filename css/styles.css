@@ -24,11 +24,11 @@ input::placeholder{color:#636366}
 .days button{padding:8px 14px;white-space:nowrap;border-radius:20px;font-size:15px;color:var(--mute)}
 .days .on{background:var(--acc);color:#000;font-weight:700}
 .meta{margin:2px 0 12px;font-size:14px;color:var(--mute)}
-.lbl,.row{display:grid;grid-template-columns:28px 1fr 1fr 76px;gap:8px;align-items:center}
+.lbl,.row{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;align-items:center}
 .lbl{font-size:13px;color:var(--mute);text-align:center;margin-bottom:6px}
 .row{margin-bottom:8px}
 .row b{font-size:17px;color:var(--acc);text-align:center}
-.row input{text-align:center;font-size:17px;padding:12px 6px}
+.row input{text-align:center;font-size:18px}
 .rest{padding:48px 0;text-align:center}.rest h2{margin-top:0}
 .login{margin-top:12vh}.login input{margin-bottom:10px}
 .err{color:var(--red);min-height:22px;font-size:14px}
@@ -89,3 +89,4 @@ input[type=date]{color-scheme:dark;min-height:46px}
 .tb.go{background:var(--acc);color:#000}
 .tb.stop{background:var(--red);color:#fff}
 .tb:disabled{opacity:.35;cursor:default}
+.trow{margin:-2px 0 4px}.trow input{color:var(--cyan);font-weight:600;font-variant-numeric:tabular-nums}
