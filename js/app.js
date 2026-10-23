@@ -173,7 +173,7 @@ async function render(){
       rows+=`<div class="row"><b>${k}</b>
         <input inputmode="decimal" data-e="${e.id}" data-k="${k}" data-f="w" placeholder="${pr&&pr.weight?pr.weight:(e.default_weight||"kg")}" value="${s?s.weight:""}" aria-label="Weight, set ${k}">
         <input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="r" placeholder="${pr?pr.reps:(parseInt(e.reps)||"reps")}" value="${s?s.reps:""}" aria-label="Reps, set ${k}"></div>`;
-      if(k===e.sets)rows+=`<div class="row trow"><span></span><span></span><input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Stopwatch time"></div>`;
+      if(k===e.sets)rows+=`<div class="row trow"><span></span><input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Stopwatch time"></div>`;
     }
     const lw=l?Math.max(...Object.values(l.sets).map(x=>x.weight)):0,lr=l?Math.max(...Object.values(l.sets).map(x=>x.reps)):0;
     const info=l?(lw?`Last time: ${lw} kg · ${md(l.day)}`:`Last time: ${lr} reps · ${md(l.day)}`):(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight");

@@ -89,4 +89,4 @@ input[type=date]{color-scheme:dark;min-height:46px}
 .tb.go{background:var(--acc);color:#000}
 .tb.stop{background:var(--red);color:#fff}
 .tb:disabled{opacity:.35;cursor:default}
-.trow{margin:-2px 0 4px}.trow input{color:var(--cyan);font-weight:600;font-variant-numeric:tabular-nums}
+.trow{margin:-2px 0 4px}.trow input{grid-column:2 / -1;text-align:center;color:var(--cyan);font-weight:600;font-variant-numeric:tabular-nums}
