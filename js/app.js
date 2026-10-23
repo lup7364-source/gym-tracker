@@ -17,6 +17,14 @@ const DEFAULTS=[
 const GROUPS=["legs","chest","back","shoulders","arms","core"];
 const GN={legs:"Legs",chest:"Chest",back:"Back",shoulders:"Shoulders",arms:"Arms",core:"Core"};
 const COL={legs:"#fa114f",chest:"#a6ff00",back:"#00d8ff",shoulders:"#ff9f0a",arms:"#bf5af2",core:"#ffd60a"};
+const COL0={...COL};
+let PLAN=null;   // special fixed plan for this user (from js/plans.js), or null for the standard app
+function applyTheme(){
+  Object.assign(COL,COL0,PLAN?PLAN.colors:{});
+  const r=document.documentElement;
+  if(PLAN){r.dataset.theme=PLAN.theme;try{localStorage.setItem("gymTheme",PLAN.theme)}catch{}}
+  else{delete r.dataset.theme;try{localStorage.removeItem("gymTheme")}catch{}}
+}
 const ICON='<svg viewBox="0 0 24 24"><path d="M6 7v10M3 10v4M18 7v10M21 10v4M6 12h12"/></svg>';
 const $=id=>document.getElementById(id);
 const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -100,6 +108,24 @@ async function planFor(day){
   return L[n];
 }
 
+/* ---------- Fixed plan (special profiles) ---------- */
+const PICK={};   // date → routine chosen by tapping Day 1/2/3
+const hintFor=name=>{for(const d of PLAN.days)for(const it of d.items)if(it[0]===name)return it[3];return""};
+function routineItems(ri){
+  return PLAN.days[ri].items.map(([name,sets,reps,hint])=>{const e=EX.find(x=>x.name===name);return e&&{...e,sets,reps,hint}}).filter(Boolean);
+}
+function pickRoutine(day,logs){
+  if(PICK[day]!==undefined)return PICK[day];
+  if(logs.length){                                   // already trained that day: show the routine that matches what was logged
+    const ids=new Set(logs.map(s=>s.exercise_id));let best=null,bs=0;
+    PLAN.days.forEach((d,i)=>{const its=routineItems(i),hit=its.filter(e=>ids.has(e.id)).length/(its.length||1);if(hit>bs){bs=hit;best=i}});
+    if(best!==null)return best;
+  }
+  const w=PLAN.weekdays[new Date(day+"T12:00:00").getDay()];
+  return w===undefined?null:w;
+}
+$("dpick").addEventListener("click",ev=>{const b=ev.target.closest("button");if(!b)return;PICK[cur]=+b.dataset.i;TM={};render()});
+
 /* ---------- Session ---------- */
 async function init(){
   const {data}=await db.auth.getSession();
@@ -115,12 +141,21 @@ $("lbtn").onclick=async()=>{
   enter(data.user);
 };
 $("p").addEventListener("keydown",e=>{if(e.key==="Enter")$("lbtn").click()});
-$("out").onclick=async()=>{if(!confirm("Sign out?"))return;await db.auth.signOut();user=null;$("p").value="";show("login")};
+$("out").onclick=async()=>{if(!confirm("Sign out?"))return;await db.auth.signOut();user=null;PLAN=null;applyTheme();$("p").value="";show("login")};
 
 async function loadEx(){
   let {data,error}=await db.from("exercises").select("*").order("id");
   if(error)return false;
-  if(!data.length){
+  if(PLAN){
+    const first={};PLAN.days.forEach(d=>d.items.forEach(([n,s,r])=>{if(!first[n])first[n]=[s,r]}));
+    const have=new Set(data.map(e=>e.name)),need=Object.keys(PLAN.ex).filter(n=>!have.has(n));
+    if(need.length){
+      const ins=await db.from("exercises").insert(need.map(n=>({name:n,muscle_group:PLAN.ex[n][0],type:PLAN.ex[n][1],sets:first[n][0],reps:first[n][1],default_weight:PLAN.ex[n][2]})));
+      if(ins.error)return false;
+      ({data}=await db.from("exercises").select("*").order("id"));
+    }
+    data=data.filter(e=>PLAN.ex[e.name]);
+  }else if(!data.length){
     await db.from("exercises").insert(DEFAULTS.map(([name,g,c])=>({name,muscle_group:g,type:c?"compound":"isolation",sets:c?4:3,reps:c?"8-10":g==="core"?"15":"12"})));
     ({data}=await db.from("exercises").select("*").order("id"));
   }
@@ -130,6 +165,8 @@ async function loadEx(){
 }
 async function enter(u){
   user=u;show("app");$("out").textContent=u.email[0];
+  const pn=typeof PROFILES!=="undefined"?PROFILES[(u.email||"").toLowerCase()]:null;
+  PLAN=(pn&&typeof PLANS!=="undefined"&&PLANS[pn])||null;applyTheme();
   if(!(await loadEx())){$("list").innerHTML='<p class="mute">Couldn’t load exercises. Did you run setup.sql?</p>';return}
   cur=iso(new Date());render();checkBW();
 }
@@ -148,14 +185,27 @@ async function render(){
   const day=cur,today=iso(new Date()),d=new Date(day+"T12:00:00");
   $("title").textContent=day===today?"Today":d.toLocaleDateString("en-US",{weekday:"long"});
   $("sub").textContent=d.toLocaleDateString("en-US",{month:"long",day:"numeric"});
-  plan=await planFor(day);
-  if(day!==cur)return;
-  $("navl").textContent=plan.length+" exercises · day "+((dayNum(day)%CYCLE)+1)+" of "+CYCLE;
+  let dayLogs=null;
+  if(PLAN){
+    const r0=await db.from("sets").select("*").eq("day",day);
+    if(day!==cur)return;
+    dayLogs=r0.data||[];
+    const ri=pickRoutine(day,dayLogs);
+    plan=ri===null?[]:routineItems(ri);
+    $("dpick").innerHTML=PLAN.days.map((x,i)=>`<button data-i="${i}" class="${i===ri?"on":""}">Day ${i+1}</button>`).join("");
+    $("dpick").classList.remove("hide");
+    $("navl").textContent=ri===null?"Rest day":`${PLAN.days[ri].title} · ${PLAN.days[ri].time}`;
+  }else{
+    $("dpick").classList.add("hide");
+    plan=await planFor(day);
+    if(day!==cur)return;
+    $("navl").textContent=plan.length+" exercises · day "+((dayNum(day)%CYCLE)+1)+" of "+CYCLE;
+  }
   $("list").innerHTML="";$("saveWrap").classList.add("hide");
-  if(!plan.length){$("list").innerHTML='<div class="rest"><h2>Nothing planned</h2><p class="mute">Add or activate exercises in the Exercises tab.</p></div>';updateRings();return}
+  if(!plan.length){$("list").innerHTML=PLAN?'<div class="rest"><h2>Rest day</h2><p class="mute">Want to train anyway? Pick a day above.</p></div>':'<div class="rest"><h2>Nothing planned</h2><p class="mute">Add or activate exercises in the Exercises tab.</p></div>';updateRings();return}
   const ids=plan.map(e=>e.id);
   const [c,p]=await Promise.all([
-    db.from("sets").select("*").eq("day",day).in("exercise_id",ids),
+    PLAN?Promise.resolve({data:dayLogs}):db.from("sets").select("*").eq("day",day).in("exercise_id",ids),
     db.from("sets").select("exercise_id,set_no,weight,reps,day").lt("day",day).in("exercise_id",ids).order("day",{ascending:false}).limit(800)
   ]);
   if(day!==cur)return;
@@ -176,7 +226,8 @@ async function render(){
       if(k===e.sets)rows+=`<div class="row trow"><span></span><input inputmode="numeric" data-e="${e.id}" data-k="${k}" data-f="t" placeholder="0:00" value="${s&&s.seconds?tmFmt(s.seconds):""}" aria-label="Stopwatch time"></div>`;
     }
     const lw=l?Math.max(...Object.values(l.sets).map(x=>x.weight)):0,lr=l?Math.max(...Object.values(l.sets).map(x=>x.reps)):0;
-    const info=l?(lw?`Last time: ${lw} kg · ${md(l.day)}`:`Last time: ${lr} reps · ${md(l.day)}`):(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight");
+    const hint=e.hint?esc(e.hint):"";
+    const info=l?(lw?`Last time: ${lw} kg · ${md(l.day)}`:`Last time: ${lr} reps · ${md(l.day)}`)+(hint?` · Suggested ${hint}`:""):(hint?`Suggested: ${hint}`:(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight"));
     return `<div class="card"><div class="eh" data-id="${e.id}" role="button" tabindex="0">
       <div class="thumb">${pic(e)}</div>
       <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}${e.carried?" · carried over":""}</div></div><span class="chev">›</span></div>
@@ -213,7 +264,7 @@ $("save").onclick=async()=>{
   if(!rows.length){$("save").textContent="Nothing to save";return}
   $("save").textContent="Saving…";
   const {error}=await db.from("sets").upsert(rows,{onConflict:"user_id,day,exercise_id,set_no"});
-  const doneIds=new Set(rows.map(r=>r.exercise_id)),left=plan.filter(e=>!doneIds.has(e.id)).length;
+  const doneIds=new Set(rows.map(r=>r.exercise_id)),left=PLAN?0:plan.filter(e=>!doneIds.has(e.id)).length;
   $("save").textContent=error?"Couldn’t save. Try again.":left?`Saved ✓ · ${left} unfinished will move to another day`:"Saved ✓";
 };
 
@@ -286,7 +337,7 @@ async function openModal(id){
   $("sheet").innerHTML=`<button class="x" id="mx" aria-label="Close">✕</button>
     <div class="big">${pic(e)}</div>
     <h1 style="font-size:30px">${esc(e.name)}</h1>
-    <div style="margin:10px 0"><span class="chip" style="color:${COL[e.muscle_group]}">${GN[e.muscle_group]}</span><span class="chip">${e.type}</span><span class="chip">${e.sets} × ${esc(e.reps)}</span></div>
+    <div style="margin:10px 0"><span class="chip" style="color:${COL[e.muscle_group]}">${GN[e.muscle_group]}</span><span class="chip">${e.type}</span><span class="chip">${e.sets} × ${esc(e.reps)}</span>${PLAN&&hintFor(e.name)?`<span class="chip">Suggested: ${esc(hintFor(e.name))}</span>`:""}</div>
     ${e.instructions?`<p class="mute" style="margin:0 0 8px">${esc(e.instructions)}</p>`:""}
     <h2 style="font-size:22px;margin-top:18px">Your weights</h2><div id="mh" class="mute">Loading…</div>
     <button id="medit" style="width:100%;margin-top:18px;background:var(--card2)">Edit exercise</button>`;
@@ -304,7 +355,8 @@ async function openModal(id){
 /* ---------- Manage exercises ---------- */
 function renderManage(){
   const act=EX.filter(e=>e.active).length;
-  $("mcount").textContent=`${EX.length} exercises · ${act} active · about ${Math.ceil(act/CYCLE)} per day`;
+  $("add").classList.toggle("hide",!!PLAN);
+  $("mcount").textContent=PLAN?`${EX.length} exercises · your 3-day plan. Tap one to add a photo or notes.`:`${EX.length} exercises · ${act} active · about ${Math.ceil(act/CYCLE)} per day`;
   $("mlist").innerHTML=GROUPS.map(g=>{
     const l=EX.filter(e=>e.muscle_group===g);if(!l.length)return"";
     return `<h3 style="margin:18px 0 8px;color:${COL[g]}">${GN[g]} <span class="mute" style="font-size:15px">${l.length}</span></h3>
@@ -325,26 +377,27 @@ async function shrink(file){
 function openEdit(id){
   const e=id?EX.find(x=>x.id===id):{name:"",muscle_group:"chest",type:"compound",sets:3,reps:"10",default_weight:0,instructions:"",active:true,image_path:null};
   blob=null;
+  const fx=!!PLAN&&!!id,hd=fx?" hide":"";
   const opt=(arr,v,lab)=>arr.map(x=>`<option value="${x}" ${x===v?"selected":""}>${lab?lab[x]:x}</option>`).join("");
   $("sheet").innerHTML=`<button class="x" id="mx" aria-label="Close">✕</button>
     <h1 style="font-size:30px;padding-top:56px;margin-bottom:16px">${id?"Edit exercise":"New exercise"}</h1>
     <div class="imgpick"><div class="thumb" id="fprev">${pic(e)}</div>
       <div><input type="file" id="ffile" accept="image/*" style="padding:8px"><div class="meta" style="margin:4px 0 0">Optional. Resized automatically.</div></div></div>
-    <label class="fld"><span>Name</span><input id="fname" value="${esc(e.name)}"></label>
-    <div class="two">
+    <label class="fld"><span>Name</span><input id="fname" value="${esc(e.name)}" ${fx?"readonly":""}></label>
+    <div class="two${hd}">
       <label class="fld"><span>Muscle group</span><select id="fgroup">${opt(GROUPS,e.muscle_group,GN)}</select></label>
       <label class="fld"><span>Type</span><select id="ftype">${opt(["compound","isolation"],e.type)}</select></label>
     </div>
-    <div class="two">
+    <div class="two${hd}">
       <label class="fld"><span>Sets</span><input id="fsets" inputmode="numeric" value="${e.sets}"></label>
       <label class="fld"><span>Reps</span><input id="freps" value="${esc(e.reps)}"></label>
     </div>
-    <label class="fld"><span>Suggested start weight (kg)</span><input id="fw" inputmode="decimal" value="${e.default_weight}"></label>
+    <label class="fld${hd}"><span>Suggested start weight (kg)</span><input id="fw" inputmode="decimal" value="${e.default_weight}"></label>
     <label class="fld"><span>Notes / instructions</span><textarea id="fins">${esc(e.instructions)}</textarea></label>
-    <label class="sw"><input type="checkbox" id="fact" ${e.active?"checked":""}> Include in my daily plan</label>
+    <label class="sw${hd}"><input type="checkbox" id="fact" ${e.active?"checked":""}> Include in my daily plan</label>
     <div class="err" id="ferr"></div>
     <button class="p" id="fsave" style="width:100%;padding:14px">Save</button>
-    ${id?'<button class="danger" id="fdel">Delete exercise</button>':""}`;
+    ${id&&!fx?'<button class="danger" id="fdel">Delete exercise</button>':""}`;
   $("modal").classList.remove("hide");
   $("mx").onclick=closeModal;
   $("ffile").onchange=async()=>{
@@ -353,7 +406,7 @@ function openEdit(id){
     catch{blob=null;$("ferr").textContent="Couldn’t read that image."}
   };
   $("fsave").onclick=()=>saveEx(e,id);
-  if(id)$("fdel").onclick=()=>delEx(e);
+  if(id&&!fx)$("fdel").onclick=()=>delEx(e);
 }
 async function saveEx(old,id){
   const name=$("fname").value.trim();
@@ -411,8 +464,8 @@ function lineSvg(vals,label,dec){
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
     <polyline fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-linejoin="round" points="${vals.map((v,i)=>x(i)+","+y(v)).join(" ")}"/>
     ${vals.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="var(--acc)"/>`).join("")}
-    <text x="4" y="${y(max)+4}" font-size="11" fill="#8e8e93">${max.toFixed(dec)}</text>
-    <text x="4" y="${y(min)+4}" font-size="11" fill="#8e8e93">${min.toFixed(dec)}</text></svg>`;
+    <text x="4" y="${y(max)+4}" font-size="11" fill="var(--mute)">${max.toFixed(dec)}</text>
+    <text x="4" y="${y(min)+4}" font-size="11" fill="var(--mute)">${min.toFixed(dec)}</text></svg>`;
 }
 
 /* ---------- Weekly body weight ---------- */
