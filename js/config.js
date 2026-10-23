@@ -9,5 +9,5 @@ const CYCLE = 6;                               // every exercise is done once ev
 /* Special profiles: email → plan name (see js/plans.js). Anyone not listed uses the standard app.
    Example: when you create the user  ella@gym.app  in Supabase, add her here. Use lowercase. */
 const PROFILES = {
-  "ella@gym.app": "rose"
+  "betty@gym.app": "rose"
 };
