@@ -2,8 +2,8 @@
    Needs: app.js (helpers, db, user, modal). The food catalog lives in the Supabase table "foods". */
 const MEALS=[["breakfast","Breakfast"],["lunch","Lunch"],["dinner","Dinner"],["snack","Snacks"]];
 const GOALS0={kcal:2000,protein:0,water:2000};
-let FD="",FLOG=[],WATER=0,GOALS={...GOALS0},FDB=[],FLOADED=false,AM="breakfast",RES=[],RECENT=[],CAT="recent";
-const CATS={dairy:"Dairy & eggs",meat_fish:"Meat & fish",grains:"Grains & bread",legumes:"Legumes",vegetables:"Vegetables",fruit:"Fruit",nuts_oils:"Nuts & oils",sweets:"Sweets & snacks",drinks:"Drinks",prepared:"Prepared"};
+let FD="",FLOG=[],WATER=0,GOALS={...GOALS0},FDB=[],FSTAMP=0,FLOADED=false,AM="breakfast",RES=[],RECENT=[],CAT="recent";
+const CATS={dairy:"Dairy & eggs",meat_fish:"Meat & fish",grains:"Grains & bread",legumes:"Legumes",vegetables:"Vegetables",fruit:"Fruit",nuts_oils:"Nuts & oils",sweets:"Sweets & snacks",drinks:"Drinks",prepared:"Prepared",custom:"Added"};
 const catLabel=k=>CATS[k]||(k.charAt(0).toUpperCase()+k.slice(1).replace(/_/g," "));
 const r1=x=>Math.round(x*10)/10;
 const norm=s=>String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -14,26 +14,24 @@ const fmtL=ml=>(Math.round(ml/10)/100)+" L";
 const nut=(f,g)=>({kcal:Math.round(f.k*g/100),protein:r1(f.p*g/100),carbs:r1(f.c*g/100),fat:r1(f.f*g/100)});
 const num0=v=>{const n=parseFloat(String(v).replace(",","."));return isNaN(n)?0:n};
 
-function resetFood(){FLOADED=false;FDB=[];CAT="recent";GOALS={...GOALS0};FD="";FLOG=[];WATER=0}
+function resetFood(){FLOADED=false;FDB=[];FSTAMP=0;CAT="recent";GOALS={...GOALS0};FD="";FLOG=[];WATER=0}
 
 /* ---------- Data ---------- */
 function allFoods(){
-  const rows=FDB.map(x=>({id:x.id,name:x.name,alias:x.alias||"",cat:x.category||"custom",k:Number(x.kcal100),p:Number(x.protein100),c:Number(x.carbs100),f:Number(x.fat100),serv:Number(x.serving)||100,mine:!!x.user_id}));
-  const mine=new Set(rows.filter(r=>r.mine).map(r=>norm(r.name)));   // your own version replaces the built-in one
-  return rows.filter(r=>r.mine||!mine.has(norm(r.name)));
+  return FDB.map(x=>({id:x.id,name:x.name,alias:x.alias||"",cat:x.category||"custom",k:Number(x.kcal100),p:Number(x.protein100),c:Number(x.carbs100),f:Number(x.fat100),serv:Number(x.serving)||100}));
 }
 function searchFoods(q){
   const t=norm(q).split(/\s+/).filter(Boolean);if(!t.length)return[];
   return allFoods().filter(f=>{const h=norm(f.name+" "+f.alias);return t.every(x=>h.includes(x))})
-    .sort((a,b)=>((+!!b.mine)-(+!!a.mine))||((+norm(b.name).startsWith(t[0]))-(+norm(a.name).startsWith(t[0]))))
+    .sort((a,b)=>(+norm(b.name).startsWith(t[0]))-(+norm(a.name).startsWith(t[0])))
     .slice(0,40);
 }
-async function reloadFoods(){const r=await db.from("foods").select("*").order("name").limit(2000);if(!r.error)FDB=r.data||[];return !r.error}
+async function reloadFoods(){const r=await db.from("foods").select("*").order("name").limit(2000);if(!r.error){FDB=r.data||[];FSTAMP=Date.now()}return !r.error}
 async function loadFoodData(){
   const [g,fd]=await Promise.all([db.from("nutrition_goals").select("*").limit(1),db.from("foods").select("*").order("name").limit(2000)]);
   if(g.error||fd.error)return false;
   if(g.data&&g.data[0])GOALS={kcal:g.data[0].kcal,protein:g.data[0].protein||0,water:g.data[0].water};
-  FDB=fd.data||[];return true;
+  FDB=fd.data||[];FSTAMP=Date.now();return true;
 }
 async function loadRecents(){
   const {data}=await db.from("food_log").select("name,grams,kcal,protein,carbs,fat").gte("day",addDays(iso(new Date()),-30)).order("id",{ascending:false}).limit(300);
@@ -102,12 +100,13 @@ $("wbtns").addEventListener("click",ev=>{
 /* ---------- Add food: search ---------- */
 async function openAdd(meal,msg){
   AM=meal;
-  const cats=["recent","mine",...[...new Set(allFoods().filter(x=>!x.mine).map(x=>x.cat))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)))];
+  if(Date.now()-FSTAMP>20000)await reloadFoods();   // pick up foods added or edited by the other user
+  const cats=["recent",...[...new Set(allFoods().map(x=>x.cat))].sort((a,b)=>catLabel(a).localeCompare(catLabel(b)))];
   $("sheet").innerHTML=`<button class="x" id="mx" aria-label="Close">✕</button>
     <h1 style="font-size:30px;padding-top:56px;margin-bottom:12px">Add to ${mealLabel(meal)}</h1>
     ${msg?`<div class="meta" style="color:var(--acc);margin:0 0 10px">${esc(msg)}</div>`:""}
     <input id="fs" placeholder="Search food (rice, arroz, chicken…)" autocomplete="off" autocapitalize="none">
-    <div class="cats" id="fcat">${cats.map(c=>`<button data-c="${c}" class="${c===CAT?"on":""}">${c==="recent"?"Recent":c==="mine"?"★ Mine":esc(catLabel(c))}</button>`).join("")}</div>
+    <div class="cats" id="fcat">${cats.map(c=>`<button data-c="${c}" class="${c===CAT?"on":""}">${c==="recent"?"Recent":esc(catLabel(c))}</button>`).join("")}</div>
     <div id="fres"></div>
     <button id="fnew" style="width:100%;margin-top:10px;background:var(--card2)">+ Create new food</button>`;
   $("modal").classList.remove("hide");$("mx").onclick=closeModal;
@@ -116,9 +115,8 @@ async function openAdd(meal,msg){
     const q=$("fs").value.trim();let head="";
     if(q){RES=searchFoods(q);if(!RES.length)head='<p class="mute">No match. Create it below.</p>'}
     else if(CAT==="recent"){RES=RECENT;head=RES.length?"":'<div class="meta">Type to search, or pick a category.</div>'}
-    else if(CAT==="mine"){RES=allFoods().filter(x=>x.mine);head=RES.length?"":'<div class="meta">Foods you create show up here.</div>'}
     else RES=allFoods().filter(x=>x.cat===CAT);
-    $("fres").innerHTML=head+RES.map((x,i)=>`<div class="frow" data-i="${i}" role="button" tabindex="0"><div><div style="font-weight:600">${x.mine?"★ ":""}${esc(x.name)}</div><div class="meta" style="margin:0">${Math.round(x.k)} kcal / 100 g${x.last?` · last ${x.last} g`:""}</div></div><span class="chev">›</span></div>`).join("");
+    $("fres").innerHTML=head+RES.map((x,i)=>`<div class="frow" data-i="${i}" role="button" tabindex="0"><div><div style="font-weight:600">${esc(x.name)}</div><div class="meta" style="margin:0">${Math.round(x.k)} kcal / 100 g${x.last?` · last ${x.last} g`:""}</div></div><span class="chev">›</span></div>`).join("");
   };
   $("fs").oninput=show;
   $("fcat").onclick=ev=>{const b=ev.target.closest("button");if(!b)return;CAT=b.dataset.c;[...$("fcat").children].forEach(x=>x.classList.toggle("on",x===b));show()};
@@ -141,7 +139,7 @@ function openAmount(food,o={}){
     <div class="seg" id="fmeal">${MEALS.map(([m,l])=>`<button data-m="${m}" class="${m===meal?"on":""}">${l}</button>`).join("")}</div>
     <button class="p" id="fok" style="width:100%;padding:14px;margin-top:14px">${en?"Save":"Add"}</button>
     ${en?'<button class="danger" id="fdel2">Delete entry</button>':""}
-    ${!en&&food.id?(food.mine?'<div class="two" style="margin-top:10px"><button id="fedit">Edit food</button><button id="fdelfood" style="color:var(--red)">Delete food</button></div>':'<button id="fedit" style="width:100%;margin-top:10px">Make my own version</button>'):""}`;
+    ${!en&&food.id?'<div class="two" style="margin-top:10px"><button id="fedit">Edit food</button><button id="fdelfood" style="color:var(--red)">Delete food</button></div>':""}`;
   $("modal").classList.remove("hide");$("mx").onclick=closeModal;
   const pv=()=>{
     const g=num0($("fgr").value),n=nut(food,g);
@@ -167,7 +165,7 @@ function openAmount(food,o={}){
   };
   if($("fedit"))$("fedit").onclick=()=>openFoodForm(food);
   if($("fdelfood"))$("fdelfood").onclick=async()=>{
-    if(!confirm(`Delete “${food.name}” from your foods? Past entries stay in your diary.`))return;
+    if(!confirm(`Delete “${food.name}” for everyone? Past diary entries stay as they are.`))return;
     await db.from("foods").delete().eq("id",food.id);await reloadFoods();openAdd(meal);
   };
 }
@@ -181,8 +179,8 @@ function openEntry(id){
 function openFoodForm(food){
   const f=food||{name:$("fs")?$("fs").value.trim():"",k:"",p:"",c:"",f:"",serv:""};
   $("sheet").innerHTML=`<button class="x" id="mx" aria-label="Close">✕</button>
-    <h1 style="font-size:28px;padding-top:56px;margin-bottom:6px">${food?(food.mine?"Edit food":"My version"):"New food"}</h1>
-    <div class="meta">Enter the values per 100 g, like on the package label.</div>
+    <h1 style="font-size:28px;padding-top:56px;margin-bottom:6px">${food?"Edit food":"New food"}</h1>
+    <div class="meta">Enter the values per 100 g, like on the package label. The food list is shared: everyone sees your changes.</div>
     <label class="fld"><span>Name</span><input id="nn" value="${esc(f.name)}"></label>
     <div class="two">
       <label class="fld"><span>Calories (kcal)</span><input id="nk" inputmode="decimal" value="${f.k}"></label>
@@ -192,6 +190,7 @@ function openFoodForm(food){
       <label class="fld"><span>Carbs (g)</span><input id="nc" inputmode="decimal" value="${f.c}"></label>
       <label class="fld"><span>Fat (g)</span><input id="nf" inputmode="decimal" value="${f.f}"></label>
     </div>
+    <label class="fld"><span>Category</span><select id="ncat">${[...new Set([...Object.keys(CATS),...FDB.map(x=>x.category)])].map(c=>`<option value="${c}" ${c===(f.cat||"custom")?"selected":""}>${esc(catLabel(c))}</option>`).join("")}</select></label>
     <label class="fld"><span>Typical serving in grams (optional)</span><input id="ns" inputmode="decimal" value="${f.serv===100?"":f.serv}"></label>
     <div class="err" id="nerr"></div>
     <button class="p" id="nsave" style="width:100%;padding:14px">Save food</button>`;
@@ -200,12 +199,12 @@ function openFoodForm(food){
     const name=$("nn").value.trim();
     if(!name){$("nerr").textContent="Give it a name.";return}
     if($("nk").value.trim()===""){$("nerr").textContent="Enter the calories per 100 g.";return}
-    const row={name,alias:food&&food.alias||"",category:food&&food.cat&&food.mine?food.cat:"custom",kcal100:num0($("nk").value),protein100:num0($("np").value),carbs100:num0($("nc").value),fat100:num0($("nf").value),serving:num0($("ns").value)||null};
+    const row={name,alias:food&&food.alias||"",category:$("ncat").value||"custom",kcal100:num0($("nk").value),protein100:num0($("np").value),carbs100:num0($("nc").value),fat100:num0($("nf").value),serving:num0($("ns").value)||null};
     $("nsave").textContent="Saving…";
-    const res=food&&food.id&&food.mine?await db.from("foods").update(row).eq("id",food.id):await db.from("foods").insert({user_id:user.id,...row});
-    if(res.error){$("nerr").textContent=res.error.code==="23505"?"You already have a food with that name.":"Couldn’t save. Try again.";$("nsave").textContent="Save food";return}
+    const res=food&&food.id?await db.from("foods").update(row).eq("id",food.id):await db.from("foods").insert({user_id:user.id,...row});
+    if(res.error){$("nerr").textContent=res.error.code==="23505"?"A food with that name already exists.":"Couldn’t save. Try again.";$("nsave").textContent="Save food";return}
     await reloadFoods();
-    openAmount(allFoods().find(x=>x.mine&&x.name===name),{meal:AM});
+    openAmount(allFoods().find(x=>norm(x.name)===norm(name)),{meal:AM});
   };
 }
 
