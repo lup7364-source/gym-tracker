@@ -6,7 +6,7 @@
 <title>Gym</title>
 <script>try{var t=localStorage.getItem("gymTheme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=4">
 
 </head>
 
@@ -105,9 +105,38 @@
     <div class="card" id="bwhist"></div>
   </section>
 
+  <section id="v6" class="hide">
+    <div class="nav"><button id="fprev" aria-label="Previous day">‹</button><span class="mute" id="fdate"></span><button id="fnext" aria-label="Next day">›</button></div>
+    <div class="top2"><h2>Nutrition</h2><button id="fgoal" style="background:var(--card2)">Goals</button></div>
+    <div class="card">
+      <div class="act">
+        <div>
+          <div class="stat"><span>Eaten</span><b id="fk" style="color:var(--acc)">0 kcal</b></div>
+          <div class="stat"><span id="frl">Remaining</span><b id="fr">0 kcal</b></div>
+        </div>
+        <svg viewBox="0 0 140 140" width="130" height="130" style="transform:rotate(-90deg);flex:none" aria-hidden="true">
+          <circle class="tr" cx="70" cy="70" r="56" stroke="var(--acc)"/><circle class="pg" id="fring" cx="70" cy="70" r="56" stroke="var(--acc)"/>
+        </svg>
+      </div>
+      <div class="stats3" style="margin-top:14px">
+        <div><b id="fp" style="color:var(--red)">0 g</b><span>Protein</span></div>
+        <div><b id="fc">0 g</b><span>Carbs</span></div>
+        <div><b id="ff" style="color:var(--cyan)">0 g</b><span>Fat</span></div>
+      </div>
+    </div>
+    <h2>Water</h2>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><b id="wl" style="font-size:26px;font-weight:600">0 L</b><span class="mute" id="wg"></span></div>
+      <div class="pbar"><i id="wbar"></i></div>
+      <div class="wbtns" id="wbtns"><button data-w="-250">−250</button><button data-w="250">+250 ml</button><button data-w="500">+500 ml</button><button data-w="x">Other…</button></div>
+    </div>
+    <div id="fmeals"></div>
+  </section>
+
   <nav class="bar">
     <button id="t1" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg>Workout</button>
     <button id="t4"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>Cardio</button>
+    <button id="t6"><svg viewBox="0 0 24 24"><path d="M7 3v7a2 2 0 002 2v9M11 3v7a2 2 0 01-2 2M17 3c-2.5 2-2.5 7 0 9v9"/></svg>Food</button>
     <button id="t5"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 10a4 4 0 018 0"/><path d="M12 10l2-2"/></svg>Weight</button>
     <button id="t2"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg>Progress</button>
     <button id="t3"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Exercises</button>
@@ -116,9 +145,10 @@
 
 <div class="modal hide" id="modal"><div class="sheet" id="sheet"></div></div>
 
-<script src="js/config.js"></script>
-<script src="js/plans.js"></script>
-<script src="js/app.js"></script>
+<script src="js/config.js?v=4"></script>
+<script src="js/plans.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
+<script src="js/food.js?v=4"></script>
 
 </body>
 </html>

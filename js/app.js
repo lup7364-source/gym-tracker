@@ -141,7 +141,7 @@ $("lbtn").onclick=async()=>{
   enter(data.user);
 };
 $("p").addEventListener("keydown",e=>{if(e.key==="Enter")$("lbtn").click()});
-$("out").onclick=async()=>{if(!confirm("Sign out?"))return;await db.auth.signOut();user=null;PLAN=null;applyTheme();$("p").value="";show("login")};
+$("out").onclick=async()=>{if(!confirm("Signed in as "+(user&&user.email)+(PLAN?" (3-day plan)":"")+".\n\nSign out?"))return;await db.auth.signOut();user=null;PLAN=null;applyTheme();$("p").value="";show("login")};
 
 async function loadEx(){
   let {data,error}=await db.from("exercises").select("*").order("id");
@@ -164,18 +164,22 @@ async function loadEx(){
   return true;
 }
 async function enter(u){
-  user=u;show("app");$("out").textContent=u.email[0];
-  const pn=typeof PROFILES!=="undefined"?PROFILES[(u.email||"").toLowerCase()]:null;
-  PLAN=(pn&&typeof PLANS!=="undefined"&&PLANS[pn])||null;applyTheme();
+  user=u;if(typeof resetFood==="function")resetFood();show("app");$("out").textContent=u.email[0];
+  const em=(u.email||"").toLowerCase(),pn=typeof PROFILES!=="undefined"?(PROFILES[em]||PROFILES[em.split("@")[0]]):null;
+  if(pn&&(typeof PLANS==="undefined"||!PLANS[pn])){
+    PLAN=null;applyTheme();
+    $("list").innerHTML=`<p class="mute">Profile “${esc(pn)}” was found for ${esc(em)} but js/plans.js isn’t loaded. Upload plans.js and index.html, then reload.</p>`;return;
+  }
+  PLAN=pn?PLANS[pn]:null;applyTheme();
   if(!(await loadEx())){$("list").innerHTML='<p class="mute">Couldn’t load exercises. Did you run setup.sql?</p>';return}
   cur=iso(new Date());render();checkBW();
 }
 
 /* ---------- Tabs ---------- */
-[1,2,3,4,5].forEach(n=>$("t"+n).onclick=()=>tab(n));
+[1,2,3,4,5,6].forEach(n=>$("t"+n).onclick=()=>tab(n));
 function tab(n){
-  [1,2,3,4,5].forEach(i=>{$("v"+i).classList.toggle("hide",i!==n);$("t"+i).classList.toggle("on",i===n)});
-  if(n===2)loadProgress();if(n===3)renderManage();if(n===4)renderCardio();if(n===5)renderBody();
+  [1,2,3,4,5,6].forEach(i=>{$("v"+i).classList.toggle("hide",i!==n);$("t"+i).classList.toggle("on",i===n)});
+  if(n===2)loadProgress();if(n===3)renderManage();if(n===4)renderCardio();if(n===5)renderBody();if(n===6)renderFood();
 }
 $("prev").onclick=()=>{cur=addDays(cur,-1);TM={};render()};
 $("next").onclick=()=>{cur=addDays(cur,1);TM={};render()};
