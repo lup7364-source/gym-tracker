@@ -6,6 +6,7 @@
 const PLANS = {
   rose: {
     theme: "rose",
+    targets: { kcal: 2000, protein: 0, fat: 0, carbs: 0 },   // placeholder until her recommended intake is defined
     colors: { legs: "#ff5d73", chest: "#ff9dd1", back: "#c9a7ff", shoulders: "#ffb88c", arms: "#e58bff", core: "#ffd1e8" },
     weekdays: { 1: 0, 3: 1, 5: 2 },          // Mon = Day 1, Wed = Day 2, Fri = Day 3
     // name: [muscle group, type, starting weight shown as placeholder]

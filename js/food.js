@@ -1,8 +1,9 @@
 /* ============ FOOD & WATER ============
    Needs: app.js (helpers, db, user, modal). The food catalog lives in the Supabase table "foods". */
 const MEALS=[["breakfast","Breakfast"],["lunch","Lunch"],["dinner","Dinner"],["snack","Snacks"]];
-const GOALS0={kcal:2000,protein:0,water:2000};
-let FD="",FLOG=[],WATER=0,GOALS={...GOALS0},FDB=[],FSTAMP=0,FLOADED=false,AM="breakfast",RES=[],RECENT=[],CAT="recent";
+const goals0=()=>({...((typeof PLAN!=="undefined"&&PLAN&&PLAN.targets)||(typeof TARGETS_STANDARD!=="undefined"?TARGETS_STANDARD:{kcal:2000,protein:0,fat:0,carbs:0})),water:2000});
+const profile0=()=>({age:null,height:null,sex:(typeof PLAN!=="undefined"&&PLAN)?"female":"male",weight:null,baseline:null});
+let FD="",FLOG=[],WATER=0,GOALS=goals0(),PROFILE=profile0(),FVIEW="diary",FDB=[],FSTAMP=0,FLOADED=false,AM="breakfast",RES=[],RECENT=[],CAT="recent";
 const CATS={dairy:"Dairy & eggs",meat_fish:"Meat & fish",grains:"Grains & bread",legumes:"Legumes",vegetables:"Vegetables",fruit:"Fruit",nuts_oils:"Nuts & oils",sweets:"Sweets & snacks",drinks:"Drinks",prepared:"Prepared",custom:"Added"};
 const catLabel=k=>CATS[k]||(k.charAt(0).toUpperCase()+k.slice(1).replace(/_/g," "));
 const r1=x=>Math.round(x*10)/10;
@@ -14,7 +15,7 @@ const fmtL=ml=>(Math.round(ml/10)/100)+" L";
 const nut=(f,g)=>({kcal:Math.round(f.k*g/100),protein:r1(f.p*g/100),carbs:r1(f.c*g/100),fat:r1(f.f*g/100)});
 const num0=v=>{const n=parseFloat(String(v).replace(",","."));return isNaN(n)?0:n};
 
-function resetFood(){FLOADED=false;FDB=[];FSTAMP=0;CAT="recent";GOALS={...GOALS0};FD="";FLOG=[];WATER=0}
+function resetFood(){FLOADED=false;FDB=[];FSTAMP=0;CAT="recent";GOALS=goals0();PROFILE=profile0();FD="";FLOG=[];WATER=0}
 
 /* ---------- Data ---------- */
 function allFoods(){
@@ -30,7 +31,12 @@ async function reloadFoods(){const r=await db.from("foods").select("*").order("n
 async function loadFoodData(){
   const [g,fd]=await Promise.all([db.from("nutrition_goals").select("*").limit(1),db.from("foods").select("*").order("name").limit(2000)]);
   if(g.error||fd.error)return false;
-  if(g.data&&g.data[0])GOALS={kcal:g.data[0].kcal,protein:g.data[0].protein||0,water:g.data[0].water};
+  GOALS=goals0();PROFILE=profile0();
+  if(g.data&&g.data[0]){
+    const r=g.data[0];
+    GOALS={kcal:r.kcal,protein:r.protein||0,fat:r.fat||0,carbs:r.carbs||0,water:r.water};
+    PROFILE={age:r.age||null,height:r.height_cm?Number(r.height_cm):null,sex:r.sex||PROFILE.sex,weight:r.weight_kg?Number(r.weight_kg):null,baseline:r.baseline||null};
+  }
   FDB=fd.data||[];FSTAMP=Date.now();return true;
 }
 async function loadRecents(){
@@ -47,7 +53,7 @@ async function loadRecents(){
 async function renderFood(){
   if(!FD)FD=iso(new Date());
   if(!FLOADED){
-    if(!(await loadFoodData())){$("fmeals").innerHTML='<p class="mute">Couldn’t load. Did you run nutrition.sql in Supabase?</p>';return}
+    if(!(await loadFoodData())){const m='<p class="mute">Couldn’t load. Did you run nutrition.sql and the latest SQL in Supabase?</p>';$("fmeals").innerHTML=m;$("drec").innerHTML=m;return}
     FLOADED=true;
   }
   const day=FD;
@@ -55,6 +61,7 @@ async function renderFood(){
   if(day!==FD)return;
   FLOG=l.data||[];WATER=w.data&&w.data[0]?Number(w.data[0].ml):0;
   paintFood();
+  if(FVIEW==="deficit"&&typeof renderDeficit==="function")renderDeficit();
 }
 function paintFood(){
   const d=new Date(FD+"T12:00:00");
@@ -66,8 +73,8 @@ function paintFood(){
   const ring=$("fring"),len=2*Math.PI*ring.getAttribute("r"),pc=GOALS.kcal?Math.min(k/GOALS.kcal,1):0;
   ring.style.strokeDasharray=pc>0?`${len*pc} ${len}`:`0 ${len}`;ring.style.opacity=pc>0?1:0;
   ring.setAttribute("stroke",left>=0?"var(--acc)":"var(--red)");
-  $("fp").textContent=Math.round(p)+(GOALS.protein?"/"+GOALS.protein:"")+" g";
-  $("fc").textContent=Math.round(c)+" g";$("ff").textContent=Math.round(f)+" g";
+  const mg=(v,g)=>Math.round(v)+(g?"/"+g:"")+" g";
+  $("fp").textContent=mg(p,GOALS.protein);$("fc").textContent=mg(c,GOALS.carbs);$("ff").textContent=mg(f,GOALS.fat);
   $("wl").textContent=fmtL(WATER);$("wg").textContent="goal "+fmtL(GOALS.water);
   $("wbar").style.width=(GOALS.water?Math.min(WATER/GOALS.water,1)*100:0)+"%";
   $("fmeals").innerHTML=MEALS.map(([m,label])=>{
@@ -208,21 +215,43 @@ function openFoodForm(food){
   };
 }
 
-/* ---------- Goals ---------- */
+/* ---------- Goals & settings ---------- */
+async function saveSettings(){
+  return db.from("nutrition_goals").upsert({user_id:user.id,kcal:GOALS.kcal,protein:GOALS.protein,fat:GOALS.fat,carbs:GOALS.carbs,water:GOALS.water,
+    age:PROFILE.age,height_cm:PROFILE.height,sex:PROFILE.sex,weight_kg:PROFILE.weight,baseline:PROFILE.baseline},{onConflict:"user_id"});
+}
 $("fgoal").onclick=()=>{
   $("sheet").innerHTML=`<button class="x" id="mx" aria-label="Close">✕</button>
     <h1 style="font-size:28px;padding-top:56px;margin-bottom:12px">Daily goals</h1>
     <label class="fld"><span>Calories (kcal)</span><input id="gk" inputmode="numeric" value="${GOALS.kcal}"></label>
-    <label class="fld"><span>Protein (g). 0 = no goal</span><input id="gp" inputmode="numeric" value="${GOALS.protein}"></label>
+    <div class="two">
+      <label class="fld"><span>Protein (g)</span><input id="gp" inputmode="numeric" value="${GOALS.protein}"></label>
+      <label class="fld"><span>Fat (g)</span><input id="gf" inputmode="numeric" value="${GOALS.fat}"></label>
+    </div>
+    <label class="fld"><span>Carbs (g)</span><input id="gc" inputmode="numeric" value="${GOALS.carbs}"></label>
+    <div class="meta" id="gsum"></div>
     <label class="fld"><span>Water (ml)</span><input id="gw" inputmode="numeric" value="${GOALS.water}"></label>
     <div class="err" id="gerr"></div>
-    <button class="p" id="gsave" style="width:100%;padding:14px">Save goals</button>`;
+    <button class="p" id="gsave" style="width:100%;padding:14px">Save goals</button>
+    <button id="grst" style="width:100%;margin-top:10px;background:var(--card2)">Use recommended numbers</button>`;
   $("modal").classList.remove("hide");$("mx").onclick=closeModal;
+  const sum=()=>{const k=num0($("gp").value)*4+num0($("gf").value)*9+num0($("gc").value)*4;$("gsum").textContent=`Macros add up to ${Math.round(k).toLocaleString("en-US")} kcal (protein ×4, fat ×9, carbs ×4).`};
+  sum();["gp","gf","gc"].forEach(id=>$(id).oninput=sum);
+  $("grst").onclick=()=>{const d=goals0();$("gk").value=d.kcal;$("gp").value=d.protein;$("gf").value=d.fat;$("gc").value=d.carbs;sum()};
   $("gsave").onclick=async()=>{
-    const g={kcal:Math.round(num0($("gk").value)),protein:Math.round(num0($("gp").value)),water:Math.round(num0($("gw").value))};
+    const g={kcal:Math.round(num0($("gk").value)),protein:Math.round(num0($("gp").value)),fat:Math.round(num0($("gf").value)),carbs:Math.round(num0($("gc").value)),water:Math.round(num0($("gw").value))};
     if(g.kcal<=0||g.water<=0){$("gerr").textContent="Calories and water must be above 0.";return}
-    const {error}=await db.from("nutrition_goals").upsert({user_id:user.id,...g},{onConflict:"user_id"});
-    if(error){$("gerr").textContent="Couldn’t save. Try again.";return}
-    GOALS=g;paintFood();closeModal();
+    GOALS=g;
+    const {error}=await saveSettings();
+    if(error){$("gerr").textContent="Couldn’t save. Did you run the latest SQL?";return}
+    paintFood();closeModal();if(FVIEW==="deficit")renderDeficit();
   };
 };
+
+/* ---------- Diary / Deficit switch ---------- */
+$("fview").addEventListener("click",ev=>{
+  const b=ev.target.closest("button");if(!b)return;
+  FVIEW=b.dataset.v;[...$("fview").children].forEach(x=>x.classList.toggle("on",x===b));
+  $("fdiary").classList.toggle("hide",FVIEW!=="diary");$("fdef").classList.toggle("hide",FVIEW!=="deficit");
+  renderFood();
+});

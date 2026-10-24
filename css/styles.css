@@ -103,3 +103,8 @@ input[type=date]{color-scheme:dark;min-height:46px}
 .cats{display:flex;gap:8px;overflow-x:auto;margin:10px -20px 6px;padding:0 20px 4px;scrollbar-width:none}
 .cats button{padding:6px 12px;border-radius:16px;background:var(--card2);color:var(--mute);white-space:nowrap;font-size:14px}
 .cats .on{background:var(--acc);color:var(--accink);font-weight:700}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-bottom:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:6px}
+.mac{margin-bottom:14px}.mac:last-of-type{margin-bottom:0}.mac .h{display:flex;justify-content:space-between;font-size:15px}
+.chart text{fill:var(--mute);font-size:10px}
+.seg button{white-space:nowrap}

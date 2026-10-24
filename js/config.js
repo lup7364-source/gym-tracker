@@ -11,3 +11,7 @@ const CYCLE = 6;                               // every exercise is done once ev
 const PROFILES = {
   "betty@gym.app": "rose"
 };
+
+/* Recommended daily intake for the standard (men's) account.
+   2,280 kcal = protein 600 kcal (150 g × 4) + fat 675 kcal (75 g × 9) + carbs 1,004 kcal (251 g × 4) */
+const TARGETS_STANDARD = { kcal: 2280, protein: 150, fat: 75, carbs: 251 };
