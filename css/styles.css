@@ -77,7 +77,9 @@ textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:0;backgr
 .seg button{flex:1;background:none;border-radius:10px;color:var(--mute);padding:9px}
 .seg .on{background:var(--card2);color:var(--ink);font-weight:600}
 input[type=range]{padding:0;height:32px;accent-color:var(--acc);background:none}
-input[type=date]{color-scheme:dark;min-height:46px}
+input[type=date]{color-scheme:dark;min-height:46px;display:block;width:100%;min-width:0;max-width:100%;-webkit-appearance:none;appearance:none;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
+.two>*,.fld{min-width:0}
 .banner{display:block;width:100%;text-align:left;background:color-mix(in srgb,var(--acc) 16%,#000);color:var(--acc);font-weight:600;margin-top:12px;padding:14px 16px;border-radius:14px}
 .stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
 .stats3 b{display:block;font-size:22px;font-weight:600}.stats3 span{font-size:13px;color:var(--mute)}
@@ -108,3 +110,4 @@ input[type=date]{color-scheme:dark;min-height:46px}
 .mac{margin-bottom:14px}.mac:last-of-type{margin-bottom:0}.mac .h{display:flex;justify-content:space-between;font-size:15px}
 .chart text{fill:var(--mute);font-size:10px}
 .seg button{white-space:nowrap}
+.cw b{font-size:17px}.cw .meta{grid-column:1/-1;margin:6px 0 0}

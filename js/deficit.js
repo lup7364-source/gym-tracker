@@ -6,7 +6,7 @@ const KCAL_PER_KG=7700;      // ≈ kcal in 1 kg of body weight change
 const ACTIVITY=1.2;          // baseline = BMR × 1.2 (daily life, no exercise)
 const MIN_PER_SET=2.5;       // minutes of strength work per logged set (incl. rest)
 const STRENGTH_MET=5;        // weight lifting, vigorous effort
-const MET={run:[6,8.3,10,11.5],bike:[3.5,6.8,8.8,11]};   // by intensity band: 1–3, 4–6, 7–8, 9–10
+const MET={run:[6,8.3,10,11.5],bike:[3.5,6.8,8.8,11],swim:[4.8,5.8,8.3,9.8]};   // by intensity band: 1–3, 4–6, 7–8, 9–10
 const band=i=>i<=3?0:i<=6?1:i<=8?2:3;
 let DRANGE=14,DD=[],LASTKG=0;
 const fmtN=n=>Math.round(n).toLocaleString("en-US");

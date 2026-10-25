@@ -6,7 +6,7 @@
 <title>Gym</title>
 <script>try{var t=localStorage.getItem("gymTheme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=6">
+<link rel="stylesheet" href="css/styles.css?v=7">
 
 </head>
 
@@ -67,19 +67,19 @@
 
   <section id="v4" class="hide">
     <h2>Cardio</h2>
-    <div class="seg" id="ckind"><button data-k="run" class="on">Run</button><button data-k="bike">Static bike</button></div>
+    <div class="seg" id="ckind"><button data-k="run" class="on">Run</button><button data-k="bike">Static bike</button><button data-k="swim">Swim</button></div>
     <div class="card" style="margin-top:12px">
       <label class="fld"><span>Date</span><input type="date" id="cday"></label>
       <div class="two">
         <label class="fld"><span>Time (min)</span><input id="cmin" inputmode="decimal" placeholder="30"></label>
-        <label class="fld"><span>Distance (km)</span><input id="ckm" inputmode="decimal" placeholder="5"></label>
+        <label class="fld"><span id="ckl">Distance (km)</span><input id="ckm" inputmode="decimal" placeholder="5"></label>
       </div>
       <label class="fld"><span>Intensity: <b id="cintl" style="color:var(--ink)">5 · Moderate</b></span><input type="range" id="cint" min="1" max="10" value="5"></label>
       <div class="err" id="cerr"></div>
       <button class="p" id="csave" style="width:100%;padding:14px">Save session</button>
     </div>
     <h2>This week</h2>
-    <div class="card stats3" id="cweek"></div>
+    <div class="card stats4 cw" id="cweek"></div>
     <h2>History</h2>
     <div class="card" id="chist"></div>
   </section>
@@ -171,9 +171,9 @@
 
 <script src="js/config.js?v=6"></script>
 <script src="js/plans.js?v=6"></script>
-<script src="js/app.js?v=6"></script>
+<script src="js/app.js?v=7"></script>
 <script src="js/food.js?v=6"></script>
-<script src="js/deficit.js?v=6"></script>
+<script src="js/deficit.js?v=7"></script>
 
 </body>
 </html>

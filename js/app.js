@@ -503,27 +503,44 @@ $("bwsave").onclick=async()=>{
 
 /* ---------- Cardio ---------- */
 let CK="run";
-const KN={run:"Run",bike:"Static bike"};
+const KN={run:"Run",bike:"Static bike",swim:"Swim"};
 const INT=["","Very easy","Very easy","Easy","Easy","Moderate","Moderate","Hard","Hard","All out","All out"];
-$("ckind").addEventListener("click",ev=>{const b=ev.target.closest("button");if(!b)return;CK=b.dataset.k;[...$("ckind").children].forEach(x=>x.classList.toggle("on",x===b))});
+const fmtPace=p=>{let m=Math.floor(p),s=Math.round((p-m)*60);if(s===60){m++;s=0}return m+":"+String(s).padStart(2,"0")};
+$("ckind").addEventListener("click",ev=>{
+  const b=ev.target.closest("button");if(!b)return;CK=b.dataset.k;
+  [...$("ckind").children].forEach(x=>x.classList.toggle("on",x===b));
+  const sw=CK==="swim";$("ckl").textContent=sw?"Distance (m)":"Distance (km)";$("ckm").placeholder=sw?"1000":"5";   // swimming is measured in meters
+});
 $("cint").oninput=()=>{$("cintl").textContent=$("cint").value+" · "+INT[+$("cint").value]};
 async function renderCardio(){
   if(!$("cday").value)$("cday").value=iso(new Date());
-  const {data,error}=await db.from("cardio").select("*").order("day",{ascending:false}).order("id",{ascending:false}).limit(60);
+  const [res,wr]=await Promise.all([
+    db.from("cardio").select("*").order("day",{ascending:false}).order("id",{ascending:false}).limit(60),
+    db.from("body_weights").select("week_start,weight").order("week_start")
+  ]);
+  const {data,error}=res;
   if(error){$("chist").innerHTML='<p class="mute" style="margin:0">Couldn’t load. Did you run update_weight_cardio.sql?</p>';return}
+  const ws=(wr&&wr.data)||[];
+  /* calories use your weight (latest weigh-in) and the intensity you chose — same math as the Deficit tab */
+  const kc=c=>(typeof cardioKcal==="function"&&typeof kgFor==="function")?cardioKcal(c,kgFor(c.day,ws)):0;
   const wk=weekStart(iso(new Date())),tw=data.filter(c=>c.day>=wk);
   const sum=(k,f)=>tw.filter(c=>!k||c.kind===k).reduce((a,c)=>a+Number(c[f]),0);
+  const kcalWeek=tw.reduce((a,c)=>a+kc(c),0);
   $("cweek").innerHTML=`<div><b style="color:var(--red)">${num(sum("run","km"))} km</b><span>Run</span></div>
     <div><b style="color:var(--acc)">${num(sum("bike","km"))} km</b><span>Bike</span></div>
-    <div><b style="color:var(--cyan)">${fmtTime(sum(null,"minutes"))}</b><span>Time</span></div>`;
+    <div><b style="color:var(--cyan)">${Math.round(sum("swim","km")*1000)} m</b><span>Swim</span></div>
+    <div><b>${fmtTime(sum(null,"minutes"))}</b><span>Time</span></div>`+
+    (kcalWeek>0?`<div class="meta">≈ ${Math.round(kcalWeek).toLocaleString("en-US")} kcal burned this week</div>`:"");
   $("chist").innerHTML=data.length?data.map(c=>{
-    const km=Number(c.km),min=Number(c.minutes);let extra="";
+    const km=Number(c.km),min=Number(c.minutes),swim=c.kind==="swim";let extra="";
     if(km>0){
-      if(c.kind==="run"){const p=min/km,m=Math.floor(p),sc=Math.round((p-m)*60);extra=` · ${sc===60?m+1:m}:${String(sc===60?0:sc).padStart(2,"0")} /km`}
+      if(swim)extra=` · ${fmtPace(min/(km*10))} /100 m`;
+      else if(c.kind==="run")extra=` · ${fmtPace(min/km)} /km`;
       else extra=` · ${(km/(min/60)).toFixed(1)} km/h`;
     }
-    return `<div class="crow"><div><div style="font-weight:600">${KN[c.kind]} · ${num(km)} km · ${fmtTime(min)}</div>
-      <div class="meta" style="margin:2px 0 0">${md(c.day)}/${c.day.slice(0,4)} · Intensity ${c.intensity}/10${extra}</div></div>
+    const k=kc(c),dist=swim?Math.round(km*1000)+" m":num(km)+" km";
+    return `<div class="crow"><div><div style="font-weight:600">${KN[c.kind]||c.kind} · ${dist} · ${fmtTime(min)}</div>
+      <div class="meta" style="margin:2px 0 0">${md(c.day)}/${c.day.slice(0,4)} · Intensity ${c.intensity}/10${extra}${k>0?` · ≈ ${k} kcal`:""}</div></div>
       <button class="del" data-id="${c.id}" aria-label="Delete session">✕</button></div>`;
   }).join(""):'<p class="mute" style="margin:0">No sessions yet.</p>';
 }
@@ -532,13 +549,14 @@ $("chist").addEventListener("click",async ev=>{
   await db.from("cardio").delete().eq("id",b.dataset.id);renderCardio();
 });
 $("csave").onclick=async()=>{
-  const min=parseFloat(String($("cmin").value).replace(",",".")),km=parseFloat(String($("ckm").value).replace(",","."))||0;
+  const min=parseFloat(String($("cmin").value).replace(",",".")),raw=parseFloat(String($("ckm").value).replace(",","."))||0;
+  const km=CK==="swim"?raw/1000:raw;
   if(!(min>0)){$("cerr").textContent="Enter the time in minutes.";return}
   if(!$("cday").value){$("cerr").textContent="Pick a date.";return}
   $("cerr").textContent="";$("csave").textContent="Saving…";
   const {error}=await db.from("cardio").insert({user_id:user.id,day:$("cday").value,kind:CK,minutes:min,km,intensity:+$("cint").value});
   $("csave").textContent="Save session";
-  if(error){$("cerr").textContent="Couldn’t save. Try again.";return}
+  if(error){$("cerr").textContent=CK==="swim"?"Couldn’t save. Did you run the swimming SQL in Supabase?":"Couldn’t save. Try again.";return}
   $("cmin").value="";$("ckm").value="";renderCardio();
 };
 
