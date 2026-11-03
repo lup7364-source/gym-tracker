@@ -170,7 +170,7 @@ async function enter(u){
     PLAN=null;applyTheme();
     $("list").innerHTML=`<p class="mute">Profile “${esc(pn)}” was found for ${esc(em)} but js/plans.js isn’t loaded. Upload plans.js and index.html, then reload.</p>`;return;
   }
-  PLAN=pn?PLANS[pn]:null;applyTheme();
+  PLAN=pn?PLANS[pn]:null;applyTheme();buildCardioKinds();
   if(!(await loadEx())){$("list").innerHTML='<p class="mute">Couldn’t load exercises. Did you run setup.sql?</p>';return}
   cur=iso(new Date());render();checkBW();
 }
@@ -503,13 +503,25 @@ $("bwsave").onclick=async()=>{
 
 /* ---------- Cardio ---------- */
 let CK="run";
-const KN={run:"Run",bike:"Static bike",swim:"Swim"};
+const KN={run:"Run",bike:"Static bike",swim:"Swim",zumba:"Zumba",yoga:"Yoga"};
+const NODIST=new Set(["zumba","yoga"]);   // classes: time + intensity only
+function applyKind(){
+  const sw=CK==="swim",nd=NODIST.has(CK);
+  $("ckl").textContent=sw?"Distance (m)":"Distance (km)";$("ckm").placeholder=sw?"1000":"5";   // swimming is measured in meters
+  $("ckwrap").classList.toggle("hide",nd);$("cmin").closest(".two").classList.toggle("one",nd);
+}
+function buildCardioKinds(){                     // run / bike / swim for everyone, plus extra options of a special profile
+  const ks=["run","bike","swim",...((PLAN&&PLAN.cardioExtra)||[])];
+  CK="run";
+  $("ckind").innerHTML=ks.map(k=>`<button data-k="${k}" class="${k===CK?"on":""}">${KN[k]}</button>`).join("");
+  applyKind();
+}
 const INT=["","Very easy","Very easy","Easy","Easy","Moderate","Moderate","Hard","Hard","All out","All out"];
 const fmtPace=p=>{let m=Math.floor(p),s=Math.round((p-m)*60);if(s===60){m++;s=0}return m+":"+String(s).padStart(2,"0")};
 $("ckind").addEventListener("click",ev=>{
   const b=ev.target.closest("button");if(!b)return;CK=b.dataset.k;
   [...$("ckind").children].forEach(x=>x.classList.toggle("on",x===b));
-  const sw=CK==="swim";$("ckl").textContent=sw?"Distance (m)":"Distance (km)";$("ckm").placeholder=sw?"1000":"5";   // swimming is measured in meters
+  applyKind();
 });
 $("cint").oninput=()=>{$("cintl").textContent=$("cint").value+" · "+INT[+$("cint").value]};
 async function renderCardio(){
@@ -539,7 +551,7 @@ async function renderCardio(){
       else extra=` · ${(km/(min/60)).toFixed(1)} km/h`;
     }
     const k=kc(c),dist=swim?Math.round(km*1000)+" m":num(km)+" km";
-    return `<div class="crow"><div><div style="font-weight:600">${KN[c.kind]||c.kind} · ${dist} · ${fmtTime(min)}</div>
+    return `<div class="crow"><div><div style="font-weight:600">${KN[c.kind]||c.kind}${NODIST.has(c.kind)?"":" · "+dist} · ${fmtTime(min)}</div>
       <div class="meta" style="margin:2px 0 0">${md(c.day)}/${c.day.slice(0,4)} · Intensity ${c.intensity}/10${extra}${k>0?` · ≈ ${k} kcal`:""}</div></div>
       <button class="del" data-id="${c.id}" aria-label="Delete session">✕</button></div>`;
   }).join(""):'<p class="mute" style="margin:0">No sessions yet.</p>';
@@ -550,13 +562,13 @@ $("chist").addEventListener("click",async ev=>{
 });
 $("csave").onclick=async()=>{
   const min=parseFloat(String($("cmin").value).replace(",",".")),raw=parseFloat(String($("ckm").value).replace(",","."))||0;
-  const km=CK==="swim"?raw/1000:raw;
+  const km=NODIST.has(CK)?0:CK==="swim"?raw/1000:raw;
   if(!(min>0)){$("cerr").textContent="Enter the time in minutes.";return}
   if(!$("cday").value){$("cerr").textContent="Pick a date.";return}
   $("cerr").textContent="";$("csave").textContent="Saving…";
   const {error}=await db.from("cardio").insert({user_id:user.id,day:$("cday").value,kind:CK,minutes:min,km,intensity:+$("cint").value});
   $("csave").textContent="Save session";
-  if(error){$("cerr").textContent=CK==="swim"?"Couldn’t save. Did you run the swimming SQL in Supabase?":"Couldn’t save. Try again.";return}
+  if(error){$("cerr").textContent=["run","bike"].includes(CK)?"Couldn’t save. Try again.":"Couldn’t save. Did you run the latest cardio SQL in Supabase?";return}
   $("cmin").value="";$("ckm").value="";renderCardio();
 };
 

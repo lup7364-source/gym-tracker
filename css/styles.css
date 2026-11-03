@@ -111,3 +111,5 @@ input[type=date]::-webkit-date-and-time-value{text-align:left}
 .chart text{fill:var(--mute);font-size:10px}
 .seg button{white-space:nowrap}
 .cw b{font-size:17px}.cw .meta{grid-column:1/-1;margin:6px 0 0}
+#ckind{flex-wrap:wrap}#ckind button{flex:1 1 30%}
+.two.one{grid-template-columns:1fr}

@@ -6,7 +6,7 @@
 <title>Gym</title>
 <script>try{var t=localStorage.getItem("gymTheme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=7">
+<link rel="stylesheet" href="css/styles.css?v=8">
 
 </head>
 
@@ -72,7 +72,7 @@
       <label class="fld"><span>Date</span><input type="date" id="cday"></label>
       <div class="two">
         <label class="fld"><span>Time (min)</span><input id="cmin" inputmode="decimal" placeholder="30"></label>
-        <label class="fld"><span id="ckl">Distance (km)</span><input id="ckm" inputmode="decimal" placeholder="5"></label>
+        <label class="fld" id="ckwrap"><span id="ckl">Distance (km)</span><input id="ckm" inputmode="decimal" placeholder="5"></label>
       </div>
       <label class="fld"><span>Intensity: <b id="cintl" style="color:var(--ink)">5 · Moderate</b></span><input type="range" id="cint" min="1" max="10" value="5"></label>
       <div class="err" id="cerr"></div>
@@ -170,10 +170,10 @@
 <div class="modal hide" id="modal"><div class="sheet" id="sheet"></div></div>
 
 <script src="js/config.js?v=6"></script>
-<script src="js/plans.js?v=6"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/plans.js?v=8"></script>
+<script src="js/app.js?v=8"></script>
 <script src="js/food.js?v=6"></script>
-<script src="js/deficit.js?v=7"></script>
+<script src="js/deficit.js?v=8"></script>
 
 </body>
 </html>
