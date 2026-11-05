@@ -234,7 +234,7 @@ async function render(){
     const info=l?(lw?`Last time: ${lw} kg · ${md(l.day)}`:`Last time: ${lr} reps · ${md(l.day)}`)+(hint?` · Suggested ${hint}`:""):(hint?`Suggested: ${hint}`:(e.default_weight?`Suggested start: ${e.default_weight} kg`:"First time. Pick a comfortable weight"));
     return `<div class="card"><div class="eh" data-id="${e.id}" role="button" tabindex="0">
       <div class="thumb">${pic(e)}</div>
-      <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}${e.carried?" · carried over":""}</div></div><span class="chev">›</span></div>
+      <div><h3>${esc(e.name)}</h3><div class="meta" style="margin:2px 0 0">${GN[e.muscle_group]} · ${e.type} · ${e.sets} × ${esc(e.reps)}${e.carried?" · carried over":""}${PLAN&&e.video_url?" · ▶ video":""}</div></div><span class="chev">›</span></div>
       <div class="meta">${info}</div>
       <div class="timer" data-t="${e.id}"><button class="tb go" data-a="go">Start</button><button class="tb" data-a="pause" disabled>Pause</button></div>
       <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span></div>${rows}</div>`;
@@ -332,9 +332,39 @@ function updateRings(){
 }
 
 /* ---------- Exercise detail ---------- */
-function closeModal(){$("modal").classList.add("hide")}
+function closeModal(){const v=$("vid");if(v)v.innerHTML="";$("modal").classList.add("hide")}   // also stops a playing video
 $("modal").addEventListener("click",ev=>{if(ev.target===$("modal"))closeModal()});
 document.addEventListener("keydown",ev=>{if(ev.key==="Escape")closeModal()});
+
+/* ---------- Exercise video (women's profile) ----------
+   Accepts a YouTube / Vimeo link or a direct .mp4/.webm file. Anything else shows an "Open video" button. */
+function videoEmbed(raw){
+  let u;try{u=new URL(String(raw).trim())}catch{return null}
+  if(!/^https?:$/.test(u.protocol))return null;
+  const h=u.hostname.replace(/^www\.|^m\./,"");let id=null;
+  if(h==="youtu.be")id=u.pathname.slice(1).split("/")[0];
+  else if(h==="youtube.com"||h==="music.youtube.com"||h==="youtube-nocookie.com"){
+    if(u.pathname==="/watch")id=u.searchParams.get("v");
+    else{const m=u.pathname.match(/^\/(?:shorts|embed|live|v)\/([\w-]{11})/);if(m)id=m[1]}
+  }
+  if(id&&/^[\w-]{11}$/.test(id)){
+    const t=(u.searchParams.get("t")||u.searchParams.get("start")||"").match(/^(\d+)s?$/),s=t?+t[1]:0;
+    return {type:"iframe",src:`https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1&modestbranding=1${s?`&start=${s}`:""}`};
+  }
+  if(h==="vimeo.com"){const m=u.pathname.match(/^\/(?:video\/)?(\d+)/);if(m)return {type:"iframe",src:`https://player.vimeo.com/video/${m[1]}`}}
+  if(h==="player.vimeo.com"&&/^\/video\/\d+/.test(u.pathname))return {type:"iframe",src:u.href};
+  if(/\.(mp4|webm|mov|m4v)$/i.test(u.pathname))return {type:"video",src:u.href};
+  return {type:"link",src:u.href};
+}
+function playVideo(raw){
+  const v=videoEmbed(raw),box=$("vid");if(!box)return;
+  if(!v){box.innerHTML='<span class="mute" style="padding:12px;text-align:center">That link doesn’t look valid. Tap “Edit exercise” to fix it.</span>';return}
+  if(v.type==="iframe"){
+    const s=v.src+(v.src.includes("?")?"&":"?")+"autoplay=1";
+    box.innerHTML=`<iframe src="${esc(s)}" title="Exercise video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  }else if(v.type==="video")box.innerHTML=`<video src="${esc(v.src)}" controls playsinline autoplay></video>`;
+  else box.innerHTML=`<a href="${esc(v.src)}" target="_blank" rel="noopener noreferrer" style="padding:12px 18px;border-radius:12px;text-decoration:none;background:var(--acc);color:var(--accink);font-weight:700">Open video ↗</a>`;
+}
 
 async function openModal(id){
   const e=EX.find(x=>x.id===id);if(!e)return;
@@ -343,10 +373,12 @@ async function openModal(id){
     <h1 style="font-size:30px">${esc(e.name)}</h1>
     <div style="margin:10px 0"><span class="chip" style="color:${COL[e.muscle_group]}">${GN[e.muscle_group]}</span><span class="chip">${e.type}</span><span class="chip">${e.sets} × ${esc(e.reps)}</span>${PLAN&&hintFor(e.name)?`<span class="chip">Suggested: ${esc(hintFor(e.name))}</span>`:""}</div>
     ${e.instructions?`<p class="mute" style="margin:0 0 8px">${esc(e.instructions)}</p>`:""}
+    ${PLAN?`<h2 style="font-size:22px;margin:18px 0 6px">How to do it</h2>${e.video_url?'<div class="vid" id="vid"><button class="p" id="vplay">▶ Watch video</button></div>':'<p class="mute" style="margin:0">No video yet. Tap “Edit exercise” to add a link.</p>'}`:""}
     <h2 style="font-size:22px;margin-top:18px">Your weights</h2><div id="mh" class="mute">Loading…</div>
     <button id="medit" style="width:100%;margin-top:18px;background:var(--card2)">Edit exercise</button>`;
   $("modal").classList.remove("hide");
   $("mx").onclick=closeModal;$("medit").onclick=()=>openEdit(id);
+  if($("vplay"))$("vplay").onclick=()=>playVideo(e.video_url);
   const {data}=await db.from("sets").select("day,weight,reps").eq("exercise_id",id).order("day",{ascending:false}).limit(80);
   const by={};(data||[]).forEach(s=>{const b=by[s.day]||(by[s.day]={w:0,reps:0});if(s.weight>b.w||(s.weight===b.w&&s.reps>b.reps)){b.w=s.weight;b.reps=s.reps}});
   const days=Object.entries(by);
@@ -398,6 +430,7 @@ function openEdit(id){
     </div>
     <label class="fld${hd}"><span>Suggested start weight (kg)</span><input id="fw" inputmode="decimal" value="${e.default_weight}"></label>
     <label class="fld"><span>Notes / instructions</span><textarea id="fins">${esc(e.instructions)}</textarea></label>
+    ${PLAN?`<label class="fld"><span>Video link (YouTube, Vimeo or .mp4)</span><input id="fvid" inputmode="url" autocapitalize="none" placeholder="https://www.youtube.com/watch?v=…" value="${esc(e.video_url||"")}"></label>`:""}
     <label class="sw${hd}"><input type="checkbox" id="fact" ${e.active?"checked":""}> Include in my daily plan</label>
     <div class="err" id="ferr"></div>
     <button class="p" id="fsave" style="width:100%;padding:14px">Save</button>
@@ -419,6 +452,11 @@ async function saveEx(old,id){
   const row={name,muscle_group:$("fgroup").value,type:$("ftype").value,sets:Math.max(1,parseInt($("fsets").value)||3),
     reps:$("freps").value.trim()||"10",default_weight:parseFloat(String($("fw").value).replace(",","."))||0,
     instructions:$("fins").value.trim()||null,active:$("fact").checked};
+  if(PLAN){   // only the women's profile has the video link
+    const vu=$("fvid").value.trim();
+    if(vu){try{if(!/^https?:$/.test(new URL(vu).protocol))throw 0}catch{$("ferr").textContent="Enter the full link, starting with https://";$("fsave").textContent="Save";return}}
+    row.video_url=vu||null;
+  }
   if(blob){
     const path=`${user.id}/${Date.now()}.jpg`;
     const up=await db.storage.from("exercise-images").upload(path,blob,{contentType:"image/jpeg"});
