@@ -164,7 +164,7 @@ async function loadEx(){
   return true;
 }
 async function enter(u){
-  user=u;if(typeof resetFood==="function")resetFood();show("app");$("out").textContent=u.email[0];
+  user=u;if(typeof resetFood==="function")resetFood();if(typeof resetCycles==="function")resetCycles();show("app");$("out").textContent=u.email[0];
   const em=(u.email||"").toLowerCase(),pn=typeof PROFILES!=="undefined"?(PROFILES[em]||PROFILES[em.split("@")[0]]):null;
   if(pn&&(typeof PLANS==="undefined"||!PLANS[pn])){
     PLAN=null;applyTheme();
@@ -190,6 +190,7 @@ async function render(){
   $("title").textContent=day===today?"Today":d.toLocaleDateString("en-US",{weekday:"long"});
   $("sub").textContent=d.toLocaleDateString("en-US",{month:"long",day:"numeric"});
   let dayLogs=null;
+  $("pendWrap").classList.add("hide");
   if(PLAN){
     const r0=await db.from("sets").select("*").eq("day",day);
     if(day!==cur)return;
@@ -201,12 +202,19 @@ async function render(){
     $("navl").textContent=ri===null?"Rest day":`${PLAN.days[ri].title} · ${PLAN.days[ri].time}`;
   }else{
     $("dpick").classList.add("hide");
-    plan=await planFor(day);
+    const cp=typeof planCycle==="function"?await planCycle(day):null;     // cycle-based plan (js/cycle.js)
     if(day!==cur)return;
-    $("navl").textContent=plan.length+" exercises · day "+((dayNum(day)%CYCLE)+1)+" of "+CYCLE;
+    if(cp){
+      plan=cp.today.concat(cp.pending);
+      $("navl").textContent=cp.finished?"Cycle complete ✓ · a new mix starts tomorrow":`${cp.today.length} today · ${cp.pending.length} pending · cycle ${cp.done}/${cp.total}`;
+    }else{                                                                  // old date-based plan (before the first cycle, or SQL not run yet)
+      plan=await planFor(day);
+      if(day!==cur)return;
+      $("navl").textContent=plan.length+" exercises · day "+((dayNum(day)%CYCLE)+1)+" of "+CYCLE+(typeof CYC_ERR!=="undefined"&&CYC_ERR?" · run the cycles SQL":"");
+    }
   }
   $("list").innerHTML="";$("saveWrap").classList.add("hide");
-  if(!plan.length){$("list").innerHTML=PLAN?'<div class="rest"><h2>Rest day</h2><p class="mute">Want to train anyway? Pick a day above.</p></div>':'<div class="rest"><h2>Nothing planned</h2><p class="mute">Add or activate exercises in the Exercises tab.</p></div>';updateRings();return}
+  if(!plan.length){$("list").innerHTML=PLAN?'<div class="rest"><h2>Rest day</h2><p class="mute">Want to train anyway? Pick a day above.</p></div>':'<div class="rest"><h2>Nothing planned</h2><p class="mute">Nothing is scheduled for this day. Exercises you miss show up in Pending.</p></div>';updateRings();return}
   const ids=plan.map(e=>e.id);
   const [c,p]=await Promise.all([
     PLAN?Promise.resolve({data:dayLogs}):db.from("sets").select("*").eq("day",day).in("exercise_id",ids),
@@ -220,7 +228,7 @@ async function render(){
     if(!l)last[s.exercise_id]={day:s.day,sets:{[s.set_no]:s}};
     else if(l.day===s.day)l.sets[s.set_no]=s;
   });
-  $("list").innerHTML=plan.map(e=>{
+  const cardOf=e=>{
     const l=last[e.id];let rows="";
     for(let k=1;k<=e.sets;k++){
       const s=saved[e.id+"|"+k],pr=l&&l.sets[k];
@@ -238,13 +246,18 @@ async function render(){
       <div class="meta">${info}</div>
       <div class="timer" data-t="${e.id}"><button class="tb go" data-a="go">Start</button><button class="tb" data-a="pause" disabled>Pause</button></div>
       <div class="lbl"><span></span><span>Weight (kg)</span><span>Reps</span></div>${rows}</div>`;
-  }).join("");
+  };
+  const todayItems=plan.filter(e=>!e.pending),pendItems=plan.filter(e=>e.pending);
+  $("list").innerHTML=todayItems.length?todayItems.map(cardOf).join(""):'<p class="mute" style="margin:8px 0">Nothing scheduled for this day.</p>';
+  $("pendlist").innerHTML=pendItems.map(cardOf).join("");
+  const pendLeft=pendItems.filter(e=>!Object.keys(saved).some(k=>k.startsWith(e.id+"|"))).length;   // not logged yet today
+  $("pendWrap").classList.toggle("hide",!pendItems.length);$("pendcount").textContent=pendLeft;
   $("saveWrap").classList.remove("hide");$("save").textContent="Save workout";
   plan.forEach(e=>paintTimer(e.id));
   updateRings();
 }
 
-$("list").addEventListener("input",ev=>{
+$("wk").addEventListener("input",ev=>{
   const t=ev.target;
   /* typing the weight of set 1 fills the other empty weight fields of that exercise */
   if(t.dataset.f==="w"&&t.dataset.k==="1")
@@ -252,8 +265,8 @@ $("list").addEventListener("input",ev=>{
   else if(t.dataset.f==="w")delete t.dataset.auto;
   updateRings();
 });
-$("list").addEventListener("click",ev=>{const h=ev.target.closest(".eh");if(h)openModal(+h.dataset.id)});
-$("list").addEventListener("keydown",ev=>{if(ev.key==="Enter"){const h=ev.target.closest(".eh");if(h)openModal(+h.dataset.id)}});
+$("wk").addEventListener("click",ev=>{const h=ev.target.closest(".eh");if(h)openModal(+h.dataset.id)});
+$("wk").addEventListener("keydown",ev=>{if(ev.key==="Enter"){const h=ev.target.closest(".eh");if(h)openModal(+h.dataset.id)}});
 
 $("save").onclick=async()=>{
   const rows=[];
@@ -268,8 +281,11 @@ $("save").onclick=async()=>{
   if(!rows.length){$("save").textContent="Nothing to save";return}
   $("save").textContent="Saving…";
   const {error}=await db.from("sets").upsert(rows,{onConflict:"user_id,day,exercise_id,set_no"});
-  const doneIds=new Set(rows.map(r=>r.exercise_id)),left=PLAN?0:plan.filter(e=>!doneIds.has(e.id)).length;
-  $("save").textContent=error?"Couldn’t save. Try again.":left?`Saved ✓ · ${left} unfinished will move to another day`:"Saved ✓";
+  const doneIds=new Set(rows.map(r=>r.exercise_id)),left=PLAN?0:plan.filter(e=>!e.pending&&!doneIds.has(e.id)).length;
+  $("save").textContent=error?"Couldn’t save. Try again.":left?`Saved ✓ · ${left} unfinished go to Pending`:"Saved ✓";
+  if(!error&&!PLAN&&typeof cycleAfterSave==="function"){
+    try{if(await cycleAfterSave())$("save").textContent="Saved ✓ · Cycle complete! A new mix starts tomorrow"}catch(e){}
+  }
 };
 
 /* ---------- Stopwatch (one per exercise) ----------
@@ -294,7 +310,7 @@ function paintTimer(id){
   pa.disabled=!t.run;pa.textContent=t.pause?"Resume":"Pause";
 }
 setInterval(()=>{Object.keys(TM).forEach(id=>{if(TM[id].run&&!TM[id].pause)paintTimer(id)})},250);
-$("list").addEventListener("click",ev=>{
+$("wk").addEventListener("click",ev=>{
   const b=ev.target.closest(".tb");if(!b)return;
   const id=+b.closest(".timer").dataset.t,t=TM[id]||(TM[id]={ms:0,t0:0,run:false,pause:false});
   if(b.dataset.a==="go"){
@@ -312,8 +328,10 @@ $("list").addEventListener("click",ev=>{
 /* ---------- Rings ---------- */
 function setRing(id,p){const c=$(id),len=2*Math.PI*c.getAttribute("r");c.style.strokeDasharray=p>0?`${len*p} ${len}`:`0 ${len}`;c.style.opacity=p>0?1:0}
 function updateRings(){
-  let tot=0,done=0,exDone=0,vol=0,lastVol=0;
+  let tot=0,done=0,exDone=0,vol=0,lastVol=0,inc=0;
   plan.forEach(e=>{
+    if(e.pending&&![...document.querySelectorAll(`input[data-e="${e.id}"]`)].some(i=>i.value!==""))return;   // untouched pending items don't count
+    inc++;
     let c=0;
     for(let k=1;k<=e.sets;k++){
       tot++;
@@ -327,8 +345,8 @@ function updateRings(){
     if(last[e.id])Object.values(last[e.id].sets).forEach(s=>lastVol+=s.weight*s.reps);
   });
   const f=(a,b)=>b?Math.min(a/b,1):0;
-  setRing("r1",f(done,tot));setRing("r2",f(exDone,plan.length));setRing("r3",f(vol,lastVol));
-  $("s1").textContent=done+"/"+tot;$("s2").textContent=exDone+"/"+plan.length;$("s3").textContent=Math.round(vol)+" kg";
+  setRing("r1",f(done,tot));setRing("r2",f(exDone,inc));setRing("r3",f(vol,lastVol));
+  $("s1").textContent=done+"/"+tot;$("s2").textContent=exDone+"/"+inc;$("s3").textContent=Math.round(vol)+" kg";
 }
 
 /* ---------- Exercise detail ---------- */
@@ -337,7 +355,8 @@ $("modal").addEventListener("click",ev=>{if(ev.target===$("modal"))closeModal()}
 document.addEventListener("keydown",ev=>{if(ev.key==="Escape")closeModal()});
 
 /* ---------- Exercise video (women's profile) ----------
-   Accepts a YouTube / Vimeo link or a direct .mp4/.webm file. Anything else shows an "Open video" button. */
+   YouTube (incl. Shorts), Vimeo and direct .mp4/.webm play inside the app. If a video can't be embedded
+   (its owner blocked it) the app says so and offers a button that opens it in YouTube / its own app. */
 function videoEmbed(raw){
   let u;try{u=new URL(String(raw).trim())}catch{return null}
   if(!/^https?:$/.test(u.protocol))return null;
@@ -348,22 +367,55 @@ function videoEmbed(raw){
     else{const m=u.pathname.match(/^\/(?:shorts|embed|live|v)\/([\w-]{11})/);if(m)id=m[1]}
   }
   if(id&&/^[\w-]{11}$/.test(id)){
-    const t=(u.searchParams.get("t")||u.searchParams.get("start")||"").match(/^(\d+)s?$/),s=t?+t[1]:0;
-    return {type:"iframe",src:`https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1&modestbranding=1${s?`&start=${s}`:""}`};
+    const t=(u.searchParams.get("t")||u.searchParams.get("start")||"").match(/^(\d+)s?$/);
+    return {type:"youtube",id,start:t?+t[1]:0,short:/^\/shorts\//.test(u.pathname),url:u.href};
   }
-  if(h==="vimeo.com"){const m=u.pathname.match(/^\/(?:video\/)?(\d+)/);if(m)return {type:"iframe",src:`https://player.vimeo.com/video/${m[1]}`}}
-  if(h==="player.vimeo.com"&&/^\/video\/\d+/.test(u.pathname))return {type:"iframe",src:u.href};
-  if(/\.(mp4|webm|mov|m4v)$/i.test(u.pathname))return {type:"video",src:u.href};
-  return {type:"link",src:u.href};
+  if(h==="vimeo.com"){const m=u.pathname.match(/^\/(?:video\/)?(\d+)/);if(m)return {type:"iframe",src:`https://player.vimeo.com/video/${m[1]}`,url:u.href}}
+  if(h==="player.vimeo.com"&&/^\/video\/\d+/.test(u.pathname))return {type:"iframe",src:u.href,url:u.href};
+  if(/\.(mp4|webm|mov|m4v)$/i.test(u.pathname))return {type:"video",src:u.href,url:u.href};
+  return {type:"link",src:u.href,url:u.href};
+}
+let ytReady=null;
+function loadYT(){
+  if(window.YT&&window.YT.Player)return Promise.resolve();
+  if(ytReady)return ytReady;
+  ytReady=new Promise((res,rej)=>{
+    const prev=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=()=>{if(prev)prev();res()};
+    const s=document.createElement("script");s.src="https://www.youtube.com/iframe_api";s.onerror=()=>{ytReady=null;rej()};
+    document.head.appendChild(s);
+    setTimeout(()=>{if(!(window.YT&&window.YT.Player)){ytReady=null;rej()}},8000);
+  });
+  return ytReady;
+}
+const openBtn=(url,label)=>`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" style="padding:12px 18px;border-radius:12px;text-decoration:none;background:var(--acc);color:var(--accink);font-weight:700">${label}</a>`;
+function vidFail(v){
+  const box=$("vid");if(!box)return;
+  box.classList.remove("portrait");
+  box.innerHTML=`<div class="fail"><span class="mute">This video can’t be played inside the app (its owner may have blocked it). You can still watch it:</span>${openBtn(v.url,"Open in YouTube ↗")}</div>`;
+}
+function vidBlock(raw){
+  const v=videoEmbed(raw);
+  return vidBlock(e.video_url)+
+    (v?`<div class="meta" style="margin:6px 0 0"><a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--acc);font-weight:600">Open in its own app ↗</a></div>`:"");
 }
 function playVideo(raw){
   const v=videoEmbed(raw),box=$("vid");if(!box)return;
   if(!v){box.innerHTML='<span class="mute" style="padding:12px;text-align:center">That link doesn’t look valid. Tap “Edit exercise” to fix it.</span>';return}
-  if(v.type==="iframe"){
+  if(v.type==="youtube"){
+    box.classList.toggle("portrait",v.short);                       // Shorts are vertical
+    box.innerHTML='<div id="ytp"></div>';
+    loadYT().then(()=>{
+      if(!$("ytp"))return;
+      new YT.Player("ytp",{videoId:v.id,host:"https://www.youtube-nocookie.com",
+        playerVars:{autoplay:1,playsinline:1,rel:0,modestbranding:1,...(v.start?{start:v.start}:{})},
+        events:{onError:()=>vidFail(v)}});
+    }).catch(()=>vidFail(v));
+  }else if(v.type==="iframe"){
     const s=v.src+(v.src.includes("?")?"&":"?")+"autoplay=1";
     box.innerHTML=`<iframe src="${esc(s)}" title="Exercise video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
   }else if(v.type==="video")box.innerHTML=`<video src="${esc(v.src)}" controls playsinline autoplay></video>`;
-  else box.innerHTML=`<a href="${esc(v.src)}" target="_blank" rel="noopener noreferrer" style="padding:12px 18px;border-radius:12px;text-decoration:none;background:var(--acc);color:var(--accink);font-weight:700">Open video ↗</a>`;
+  else box.innerHTML=openBtn(v.url,"Open video ↗");
 }
 
 async function openModal(id){

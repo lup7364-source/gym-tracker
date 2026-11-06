@@ -6,7 +6,7 @@
 <title>Gym</title>
 <script>try{var t=localStorage.getItem("gymTheme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=9">
+<link rel="stylesheet" href="css/styles.css?v=11">
 
 </head>
 
@@ -46,8 +46,14 @@
         <circle class="tr" cx="70" cy="70" r="28" stroke="var(--cyan)"/><circle class="pg" id="r3" cx="70" cy="70" r="28" stroke="var(--cyan)"/>
       </svg>
     </div>
-    <h2>Exercises</h2>
-    <div id="list"></div>
+    <div id="wk">
+      <div id="pendWrap" class="hide">
+        <button class="pendhead" id="pendhead"><span>Pending</span><span><b class="pendbadge" id="pendcount">0</b><i class="chev">›</i></span></button>
+        <div id="pendlist" class="hide"></div>
+      </div>
+      <h2>Exercises</h2>
+      <div id="list"></div>
+    </div>
     <div class="save hide" id="saveWrap"><button class="p" id="save">Save workout</button></div>
   </section>
 
@@ -171,9 +177,10 @@
 
 <script src="js/config.js?v=6"></script>
 <script src="js/plans.js?v=8"></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=11"></script>
 <script src="js/food.js?v=6"></script>
 <script src="js/deficit.js?v=8"></script>
+<script src="js/cycle.js?v=11"></script>
 
 </body>
 </html>
